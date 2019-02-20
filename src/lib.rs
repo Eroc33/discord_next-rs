@@ -1,5 +1,6 @@
-#![feature(try_from)]
+#![feature(proc_macro,try_from,generators,await_macro, async_await, futures_api)]
 extern crate reqwest;
+#[macro_use]
 extern crate tokio;
 extern crate tungstenite;
 extern crate tokio_tungstenite;
@@ -10,30 +11,39 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
-extern crate failure_await as futures;
+extern crate failure;
 extern crate url;
 extern crate futures;
+#[macro_use]
+extern crate bitflags;
 
-use url::Url;
-use futures::prelude::*;
-
-use tokio_tungstenite::WebSocketStream;
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
-
-mod model;
+pub mod model;
+mod connection;
+mod client;
+pub use connection::*;
+pub use client::*;
 
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "An http error occurred")]
+    #[fail(display = "An http error occurred {:?}",_0)]
     Http (#[cause] reqwest::Error),
-    #[fail(display = "An error occured while parsing a url")]
+    #[fail(display = "An error occured while parsing a url {:?}",_0)]
     Url(#[cause] url::ParseError),
     #[fail(display = "An error occured during a websocket operation {:?}",_0)]
     Ws(#[cause] tungstenite::error::Error),
-    #[fail(display = "An error occured during (de)serialization")]
-    Json(#[cause] serde_json::Error)
+    #[fail(display = "An error occured during (de)serialization {:?}",_0)]
+    Json(#[cause] serde_json::Error),
+    #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
+    HeartbeatTimer(#[cause] tokio::timer::Error),
+}
+
+impl Error{
+    pub fn is_recoverable(&self) -> bool{
+        match self{
+            Error::Ws(_) | Error::HeartbeatTimer(_) => false,
+            _ohter => true,
+        }
+    }
 }
 
 impl From<reqwest::Error> for Error{
@@ -60,65 +70,10 @@ impl From<serde_json::Error> for Error{
     }
 }
 
-pub struct Connection{
-    stream: Box<Stream<Item=model::ReceivablePayload,Error=Error> + Send>,
-    sink: Box<Sink<SinkItem=model::SendablePayload,SinkError=Error>+Send>,
-    heartbeat_interval: u64,
-}
-
-
-const API_BASE: &str = " https://discordapp.com/api/v6";
-
-const GATEWAY_VERSION: u8 = 6;
-
-pub fn get_gateway() -> Result<Url,Error>{
-    #[derive(Deserialize)]
-    struct GatewayResponse{
-        url: String
+impl From<tokio::timer::Error> for Error{
+    fn from(e: tokio::timer::Error) -> Self{
+        Error::HeartbeatTimer(e)
     }
-    let res: GatewayResponse = reqwest::get(&(API_BASE.to_owned()+"/gateway"))?.json()?;
-    Ok(Url::parse(format!("{}?v={}&encoding=json",res.url,GATEWAY_VERSION).as_str())?)
-}
-
-pub fn connect_to_gateway(token: String) -> Box<Future<Item=Connection,Error=Error> + Send>{
-    Box::new(futures::future::result(get_gateway()).and_then(|url|{
-        tokio_tungstenite::connect_async(url).map_err(Error::from)
-    }).map(|(stream,_res)|{
-        let (sink,stream) = stream.split();
-        let sink = Box::new(sink.sink_map_err(Error::from).with(|payload: model::SendablePayload|{
-            let payload = model::Payload::try_from_sendable(payload)?;
-            let payload = serde_json::to_string(&payload)?;
-            println!("sending payload: {:?}",payload);
-            Ok(tungstenite::Message::Text(payload))
-        }));
-        let stream = Box::new(stream.map_err(Error::from).and_then(|message|{
-            let payload: model::Payload = serde_json::from_str(&message.into_text()?)?;
-            Ok(payload.received_event_data()?)
-        }));
-        (sink,stream)
-    }).and_then(|(sink,stream)|{
-        stream.into_future().map(move|(payload,stream)| (sink,stream,payload.unwrap())).map_err(|(e,_strm)| Error::from(e))
-    }).and_then(|(sink,stream,payload)|{
-        println!("packet, should be hello: {:#?}",payload);
-        let hello = payload.expect_hello();
-        println!("{:#?}",hello);
-        let identify = model::Identify::new(token);
-        println!("sending identify payload: {:#?}",identify);
-        Ok((sink,stream,hello,identify))
-    }).and_then(|(sink,stream,hello,identify)|{
-        sink.send(identify.into()).map(move |sink| (sink,stream,hello.heartbeat_interval)).map_err(Error::from)
-    }).and_then(|(sink,stream,heartbeat_interval)|{
-        stream.into_future().map(move |(message,stream)| (message,sink,stream,heartbeat_interval)).map_err(|(e,_strm)| Error::from(e))
-    }).and_then(|(message,sink,stream,heartbeat_interval)|{
-        stream.into_future().map(move|(payload,stream)| (sink,stream,payload.unwrap(),heartbeat_interval)).map_err(|(e,_strm)| Error::from(e))
-    }).and_then(|(sink,stream,payload,heartbeat_interval)|{
-        println!("packet, should be event ready: {:?}",payload);
-        let ready = payload.expect_event().expect_ready();
-        println!("{:?}",ready);
-        Ok((sink,stream,heartbeat_interval))
-    }).and_then(|(sink,stream,heartbeat_interval)|{
-        Ok(Connection{sink,stream,heartbeat_interval})
-    })) as Box<_>
 }
 
 #[cfg(test)]

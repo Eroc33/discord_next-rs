@@ -1,23 +1,30 @@
 [package]
 authors = ["Euan Rochester <euan@rochester.me.uk>"]
+edition = "2018"
 name = "discord_next"
 version = "0.1.0"
 
 [dependencies]
+bitflags = "1.0.4"
 failure = "0.1.1"
-futures-await = {git="https://github.com/alexcrichton/futures-await"}
-reqwest = "0.8.5"
-serde = "1.0.58"
-serde_derive = "1.0.58"
-serde_json = "1.0.17"
-tokio = "0.1.6"
-tokio-tls = "0.1.4"
-tokio-tungstenite = "0.5.1"
-tungstenite = "0.5.3"
-url = "1.7.0"
+futures = "0.1.25"
+reqwest = "0.9"
+serde = "1.0.87"
+serde_derive = "1.0.87"
+serde_json = "1.0.38"
+tokio-tls = "0.2.1"
+tokio-tungstenite = "0.6.0"
+tungstenite = "0.6.0"
+url = "1.7.2"
+
+[dependencies.chrono]
+features = ["serde"]
+version = "0.4.6"
+
+[dependencies.tokio]
+features = ["async-await-preview"]
+version = "0.1.15"
 
 [dev-dependencies]
-dotenv = "0.12.0"
-
-[patch.crates-io.tokio-tungstenite]
-git = "https://github.com/snapview/tokio-tungstenite"
+dotenv = "0.13.0"
+envy = "0.3"
