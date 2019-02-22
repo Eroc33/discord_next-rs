@@ -1,5 +1,4 @@
 
-use url::Url;
 use futures::prelude::*;
 use crate::Error;
 use crate::model;
@@ -88,9 +87,10 @@ impl ConnectionRecvPart{
 }
 
 impl Connection{
-    pub async fn run<F,Fut>(self, mut f: F) -> Result<(),Error>
+    pub async fn run<E,F,Fut>(self, mut f: F) -> Result<(),E>
         where F: FnMut(model::ReceivableEvent,crate::Client) -> Fut,
-            Fut: std::future::Future<Output = Result<(),Error>> + Send + 'static
+            Fut: std::future::Future<Output = Result<(),E>> + Send + 'static,
+            E: std::fmt::Debug + From<Error>
     {
         use futures::future::Either;
         use tokio::prelude::*;
@@ -119,61 +119,49 @@ impl Connection{
         }
         Ok(())
     }
-}
 
+    pub async fn new<S: Into<String>>(token: S) -> Result<Self,Error>{
+        let token = token.into();
+        let client = crate::Client::new(token.clone());
+        let url = await!(client.get_gateway())?;
+        let (stream,_res) = await!(tokio_tungstenite::connect_async(url))?;
+        let (sink,stream) = stream.split();
+        let sink: Box<Sink<SinkItem=_,SinkError=_>+Send> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::SendablePayload|{
+            let payload = model::Payload::try_from_sendable(payload)?;
+            let payload = serde_json::to_string(&payload)?;
+            eprintln!("sending payload: {:?}",payload);
+            Ok(tungstenite::Message::Text(payload))
+        }));
+        let stream = Box::new(stream.map_err(Error::from).and_then(|message|{
+            let text = message.into_text()?;
+            eprintln!("Parsing: {}",&text);
+            let payload: model::Payload = serde_json::from_str(&text)?;
+            Ok(payload.received_event_data()?)
+        }));
+        let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
 
-const API_BASE: &str = " https://discordapp.com/api/v6";
+        eprintln!("packet, should be hello: {:#?}",payload);
+        let hello = payload.unwrap().expect_hello();
+        let heartbeat_interval = hello.heartbeat_interval;
+        eprintln!("{:#?}",hello);
+        let identify = model::Identify::new(token.clone());
+        eprintln!("sending identify payload: {:#?}",identify);
 
-const GATEWAY_VERSION: u8 = 6;
+        let sink = CloseOnDrop(await!(sink.send(identify.into()))?);
 
-pub fn get_gateway() -> Result<Url,Error>{
-    #[derive(Deserialize)]
-    struct GatewayResponse{
-        url: String
+        let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
+
+        eprintln!("packet, should be event ready: {:?}",payload);
+        let ready = payload.unwrap().expect_event().expect_ready();
+        eprintln!("{:?}",ready);
+
+        Ok(Self{
+            send: ConnectionSendPart{
+                sink,token
+            },
+            recv: ConnectionRecvPart{
+                stream,heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval))
+            }
+        })
     }
-    let res: GatewayResponse = reqwest::get(&(API_BASE.to_owned()+"/gateway"))?.json()?;
-    Ok(Url::parse(format!("{}?v={}&encoding=json",res.url,GATEWAY_VERSION).as_str())?)
-}
-
-pub async fn connect_to_gateway(token: String) -> Result<Connection,Error>{
-    let url = get_gateway()?;
-    let (stream,_res) = await!(tokio_tungstenite::connect_async(url))?;
-    let (sink,stream) = stream.split();
-    let sink: Box<Sink<SinkItem=_,SinkError=_>+Send> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::SendablePayload|{
-        let payload = model::Payload::try_from_sendable(payload)?;
-        let payload = serde_json::to_string(&payload)?;
-        eprintln!("sending payload: {:?}",payload);
-        Ok(tungstenite::Message::Text(payload))
-    }));
-    let stream = Box::new(stream.map_err(Error::from).and_then(|message|{
-        let text = message.into_text()?;
-        eprintln!("Parsing: {}",&text);
-        let payload: model::Payload = serde_json::from_str(&text)?;
-        Ok(payload.received_event_data()?)
-    }));
-    let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
-
-    eprintln!("packet, should be hello: {:#?}",payload);
-    let hello = payload.unwrap().expect_hello();
-    let heartbeat_interval = hello.heartbeat_interval;
-    eprintln!("{:#?}",hello);
-    let identify = model::Identify::new(token.clone());
-    eprintln!("sending identify payload: {:#?}",identify);
-
-    let sink = CloseOnDrop(await!(sink.send(identify.into()))?);
-
-    let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
-
-    eprintln!("packet, should be event ready: {:?}",payload);
-    let ready = payload.unwrap().expect_event().expect_ready();
-    eprintln!("{:?}",ready);
-
-    Ok(Connection{
-        send: ConnectionSendPart{
-            sink,token
-        },
-        recv: ConnectionRecvPart{
-            stream,heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval))
-        }
-    })
 }

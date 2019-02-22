@@ -22,7 +22,7 @@ fn main(){
     let vars = envy::from_env::<EnvVars>().unwrap();
 
     tokio::run_async(async move {
-        let conn = await!(discord_next::connect_to_gateway(vars.bot_token.clone()));
+        let conn = await!(discord_next::Connection::new(vars.bot_token.clone()));
         let conn = match conn{
             Ok(conn) => {
                 println!("conn built");
@@ -39,7 +39,7 @@ fn main(){
                 discord_next::model::ReceivableEvent::MessageCreate(msg) => {
                     if msg.content.starts_with(ACTIVATOR) {
                         let cmd = &msg.content[ACTIVATOR.len()..].trim();
-                        await!(client.create_message(msg.channel_id,discord_next::NewMessage{content: (*cmd).into(), ..Default::default()}))?;
+                        await!(client.send_message(msg.channel_id,discord_next::NewMessage{content: (*cmd).into(), ..Default::default()}))?;
                     }
                 }
                 _other => {}

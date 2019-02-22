@@ -190,20 +190,20 @@ pub struct Assets{
 
 #[derive(Debug,Deserialize)]
 pub struct UnavailableGuild{
-    pub id: Snowflake,
+    pub id: GuildId,
     pub unavailable: bool
 }
 
 #[derive(Debug,Deserialize)]
 pub struct Channel{
     //the id of this channel
-    pub id: Snowflake,
+    pub id: ChannelId,
     //the type of channel
     #[serde(rename = "type")]
     pub typ: u64,
     //the id of the guild
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub guild_id: Option<Snowflake>,
+    pub guild_id: Option<GuildId>,
     //sorting position of the channel
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub position: Option<u64>,
@@ -221,7 +221,7 @@ pub struct Channel{
     pub nsfw: Option<bool>,
     //the id of the last message sent in this channel (may not point to an existing or valid message)
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub last_message_id: Option<Snowflake>,
+    pub last_message_id: Option<MessageId>,
     //the bitrate (in bits) of the voice channel
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub bitrate: Option<u64>,
@@ -236,13 +236,13 @@ pub struct Channel{
     pub icon: Option<String>,
     //id of the DM creator
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub owner_id: Option<Snowflake>,
+    pub owner_id: Option<UserId>,
     //application id of the group DM creator if it is bot-created
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub application_id: Option<Snowflake>,
     //id of the parent category for a channel
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<Snowflake>,
+    pub parent_id: Option<ChannelId>,
     //when the last pinned message was pinned
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub last_pin_timestamp: Option<DateTime<FixedOffset>>,
@@ -261,10 +261,10 @@ pub struct Overwrite{
     pub deny: u64,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct User{
     //the user's id
-    pub id: Snowflake,
+    pub id: UserId,
     //the user's username, not unique across the platform
     pub username: String,
     //the user's 4-digit discord-tag
@@ -289,7 +289,7 @@ pub struct User{
 #[derive(Debug,Deserialize)]
 pub struct PartialUser{
     //the user's id
-    pub id: Snowflake,
+    pub id: UserId,
     //the user's username, not unique across the platform
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
@@ -316,7 +316,7 @@ pub struct PartialUser{
 #[derive(Debug,Deserialize)]
 pub struct Guild{
     ///guild id
-    pub id: Snowflake,
+    pub id: GuildId,
     ///guild name (2-100 characters)
     pub name: String,
     ///icon hash
@@ -327,14 +327,14 @@ pub struct Guild{
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub owner: Option<bool>,
     ///id of owner
-    pub owner_id: Snowflake,
+    pub owner_id: UserId,
     ///total permissions for the user in the guild (does not include channel overrides)
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Permissions>,
     ///voice region id for the guild
     pub region: String,
     ///id of afk channel
-    pub afk_channel_id: Option<Snowflake>,
+    pub afk_channel_id: Option<ChannelId>,
     ///afk timeout in seconds
     pub afk_timeout: u64,
     ///is this guild embeddable (e.g. widget)
@@ -342,7 +342,7 @@ pub struct Guild{
     pub embed_enabled: Option<bool>,
     ///if not null, the channel id that the widget will generate an invite to
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub embed_channel_id: Option<Snowflake>,
+    pub embed_channel_id: Option<ChannelId>,
     ///verification level required for the guild
     pub verification_level: u64,
     ///default message notifications level
@@ -364,9 +364,9 @@ pub struct Guild{
     pub widget_enabled: Option<bool>,
     ///the channel id for the server widget
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub widget_channel_id: Option<Snowflake>,
+    pub widget_channel_id: Option<ChannelId>,
     ///the id of the channel to which system messages are sent
-    pub system_channel_id: Option<Snowflake>,
+    pub system_channel_id: Option<ChannelId>,
     ///when this guild was joined at
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub joined_at: Option<DateTime<FixedOffset>>,
@@ -477,7 +477,7 @@ impl serde::ser::Serialize for Permissions {
 #[derive(Debug,Deserialize)]
 pub struct Role{
     ///role id
-    pub id: Snowflake,
+    pub id: RoleId,
     ///role name
     pub name: String,
     ///integer representation of hexadecimal color code
@@ -494,7 +494,7 @@ pub struct Role{
     pub mentionable: bool,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Emoji{
     ///emoji id
     pub id: Option<Snowflake>,
@@ -538,11 +538,11 @@ pub struct GuildMember{
 pub struct VoiceState{
     ///the guild id this voice state is for
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub guild_id: Option<Snowflake>,
+    pub guild_id: Option<GuildId>,
     ///the channel id this user is connected to
-    pub channel_id: Option<Snowflake>,
+    pub channel_id: Option<ChannelId>,
     ///the user id this voice state is for
-    pub user_id: Snowflake,
+    pub user_id: UserId,
     ///the guild member this voice state is for
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub member: Option<GuildMember>,
@@ -578,26 +578,26 @@ pub struct PresenceUpdate{
     pub activities: Vec<Activity>,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct PartialGuildMember{
     //TODO: figure out which fields are given
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Mention{
     //TODO: figure out which fields are given
     //"user object, with an additional partial member field"
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Message{
     ///id of the message
-    pub id: Snowflake,
+    pub id: MessageId,
     ///id of the channel the message was sent in
     pub channel_id: ChannelId,
     ///id of the guild the message was sent in
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub guild_id: Option<Snowflake>,
+    pub guild_id: Option<GuildId>,
     ///the author of this message (not guaranteed to be a valid user if the message was created by a webhook)
     pub author: User,
     ///member properties for this message's author
@@ -643,7 +643,7 @@ pub struct Message{
     pub application: Option<MessageApplication>,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Reaction{
     ///times this emoji has been used to react
     pub count: u64,
@@ -653,7 +653,7 @@ pub struct Reaction{
     pub emoji: Emoji,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Attachment{
     ///attachment id
     pub id: Snowflake,
@@ -671,7 +671,7 @@ pub struct Attachment{
     pub width: Option<u64>,
 }
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct MessageActivity{
     ///type of message activity
     #[serde(rename="type")]
@@ -688,7 +688,7 @@ enum_number!(MessageActivityType{
     JoinRequest = 5,
 });
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct MessageApplication{
     ///id of the application
     pub id: Snowflake,

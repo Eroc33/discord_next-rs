@@ -16,12 +16,16 @@ extern crate url;
 extern crate futures;
 #[macro_use]
 extern crate bitflags;
+extern crate itertools;
 
 pub mod model;
 mod connection;
 mod client;
 pub use connection::*;
 pub use client::*;
+
+pub (crate) const API_BASE: &str = " https://discordapp.com/api/v6";
+pub (crate) const GATEWAY_VERSION: u8 = 6;
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -35,6 +39,8 @@ pub enum Error {
     Json(#[cause] serde_json::Error),
     #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
     HeartbeatTimer(#[cause] tokio::timer::Error),
+    #[fail(display = "An embed was too big {:?}",_0)]
+    EmbedTooBig(#[cause] model::EmbedTooBigError)
 }
 
 impl Error{
@@ -43,6 +49,12 @@ impl Error{
             Error::Ws(_) | Error::HeartbeatTimer(_) => false,
             _ohter => true,
         }
+    }
+}
+
+impl From<model::EmbedTooBigError> for Error{
+    fn from(e: model::EmbedTooBigError) -> Self{
+        Error::EmbedTooBig(e)
     }
 }
 
@@ -78,9 +90,11 @@ impl From<tokio::timer::Error> for Error{
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    #[test]
-    fn it_gets_the_gateway() {
-        assert!(get_gateway().is_ok());
-    }
+    //commented because tokio currently doesn't have a way of getting return values from the runtime.
+    //can be re-implemented when https://github.com/tokio-rs/tokio/issues/841 is addressed
+    // use super::*;
+    // #[test]
+    // fn it_gets_the_gateway() {
+    //     assert!(get_gateway().is_ok());
+    // }
 }

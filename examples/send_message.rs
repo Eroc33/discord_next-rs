@@ -21,7 +21,7 @@ fn main(){
     let vars = envy::from_env::<EnvVars>().unwrap();
 
     tokio::run_async(async {
-        let conn = await!(discord_next::connect_to_gateway(vars.bot_token.clone()));
+        let conn = await!(discord_next::Connection::new(vars.bot_token.clone()));
         match conn{
             Ok(_) => println!("conn built"),
             Err(e) => {
@@ -30,7 +30,7 @@ fn main(){
             }
         };
         let client = discord_next::Client::new(vars.bot_token);
-        let res = await!(client.create_message(vars.channel_id,discord_next::NewMessage{content:"Message test".into(),..Default::default()}));
+        let res = await!(client.send_message(vars.channel_id,discord_next::NewMessage{content:"Message test".into(),..Default::default()}));
         match res{
             Ok(_) => println!("message sent"),
             Err(e) => {
