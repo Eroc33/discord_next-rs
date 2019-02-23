@@ -72,7 +72,7 @@ impl ConnectionRecvPart{
                             Some(Either::A(SendHeartBeat))
                         }
                         model::ReceivablePayload::Hello(hello) => {
-                            eprint!("WARNING: unexpected hello payload: {:?}",hello);
+                            eprintln!("WARNING: unexpected hello payload: {:?}",hello);
                             //most resilient thing to do here is just continue probably
                             None
                         }
