@@ -111,7 +111,7 @@ impl Client{
         await!(self.post_json(None,url,new_message))
     }
 
-    pub async fn get_guilds(&self) -> Result<Vec<Guild>,Error>{
+    pub async fn get_guilds(&self) -> Result<Vec<PartialGuild>,Error>{
         await!(self.get_json(None,"/users/@me/guilds"))
     }
 

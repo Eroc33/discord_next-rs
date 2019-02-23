@@ -313,6 +313,22 @@ pub struct PartialUser{
 }
 
 #[derive(Debug,Deserialize)]
+pub struct PartialGuild{
+    ///guild id
+    pub id: GuildId,
+    ///guild name (2-100 characters)
+    pub name: String,
+    ///icon hash
+    pub icon: Option<String>,
+    ///whether or not the user is the owner of the guild
+    #[serde(default,skip_serializing_if = "Option::is_none")]
+    pub owner: Option<bool>,
+    ///total permissions for the user in the guild (does not include channel overrides)
+    #[serde(default,skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Permissions>,
+}
+
+#[derive(Debug,Deserialize)]
 pub struct Guild{
     ///guild id
     pub id: GuildId,
