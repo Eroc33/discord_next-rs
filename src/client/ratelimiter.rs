@@ -83,7 +83,9 @@ impl RateLimiter{
                 std::cmp::max(wait_endpoint,wait_global)
             };
             if let Some(wait) = wait{
+                eprintln!("Waiting on ratelimit: {:?}",wait);
                 await!(tokio::timer::Delay::new(wait))?;
+                eprintln!("Rate limit wait complete");
             }
             if self.use_resource(endpoint){
                 return Ok(());
@@ -98,12 +100,12 @@ impl RateLimiter{
         let endpoint_allowed = if let Some(rate_limit) = guard.get_mut(endpoint){
             rate_limit.use_one()
         }else{
-            false
+            true
         };
         let global_allowed = if let Some(rate_limit) = guard.get_mut("GLOBAL"){
             rate_limit.use_one()
         }else{
-            false
+            true
         };
         endpoint_allowed&&global_allowed
     }
