@@ -1,4 +1,4 @@
-#![feature(proc_macro,try_from,generators,await_macro, async_await, futures_api)]
+#![feature(try_from,generators,await_macro, async_await, futures_api)]
 extern crate reqwest;
 #[macro_use]
 extern crate tokio;
@@ -40,7 +40,9 @@ pub enum Error {
     #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
     HeartbeatTimer(#[cause] tokio::timer::Error),
     #[fail(display = "An embed was too big {:?}",_0)]
-    EmbedTooBig(#[cause] model::EmbedTooBigError)
+    EmbedTooBig(#[cause] model::EmbedTooBigError),
+    #[fail(display = "Was rate limited too many times (>={}) while executing: {}",_0,_1)]
+    TooManyRetries(u16,String)
 }
 
 impl Error{

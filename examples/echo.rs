@@ -34,7 +34,7 @@ fn main(){
             }
         };
         let res = await!(conn.run(async move |event,client|{
-            eprintln!("event: {:?}:", event);
+            println!("event: {:?}:", event);
             match event{
                 discord_next::model::ReceivableEvent::MessageCreate(msg) => {
                     if msg.content.starts_with(ACTIVATOR) {
@@ -46,6 +46,6 @@ fn main(){
             }
             Ok(())
         }));
-        eprintln!("Bot closed, res: {:?}",res);
+        println!("Bot closed, res: {:?}",res);
     });
 }

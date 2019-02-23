@@ -27,7 +27,7 @@ where
         {
             match u64::from_str_radix(s,10){
                 Ok(o) => Ok(o),
-                Err(e) => Err(de::Error::invalid_value(Unexpected::Str(s),&self))
+                Err(_e) => Err(de::Error::invalid_value(Unexpected::Str(s),&self))
             }
         }
     }

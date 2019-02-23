@@ -1,5 +1,4 @@
 use chrono::{DateTime,FixedOffset};
-#[macro_use]
 use serde_json;
 
 mod ids;

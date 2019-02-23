@@ -54,21 +54,21 @@ impl ConnectionRecvPart{
     pub fn event_stream(self) -> impl Stream<Item=futures::future::Either<SendHeartBeat,model::ReceivableEvent>,Error=Error>
     {
         use futures::future::Either;
-        let ConnectionRecvPart{mut heartbeat_timer, mut stream} = self;
+        let ConnectionRecvPart{heartbeat_timer, stream} = self;
         heartbeat_timer.map_err(Error::from).map(Either::A).select(stream.map(Either::B)).filter_map(|heartbeat_or_event|{
             match heartbeat_or_event{
-                Either::A(heartbeat) => {
+                Either::A(_heartbeat) => {
                     Some(Either::A(SendHeartBeat))
                 }
                 Either::B(payload) => {
-                    eprintln!("got payload: {:?}",payload);
+                    //eprintln!("got payload: {:?}",payload);
                     match payload{
                         model::ReceivablePayload::HeartbeatAck => {
                             //don't really care
                             None
                         }
                         model::ReceivablePayload::HeartbeatRequest => {
-                            eprintln!("sending heartbeat");
+                            //eprintln!("sending heartbeat");
                             Some(Either::A(SendHeartBeat))
                         }
                         model::ReceivablePayload::Hello(hello) => {
@@ -97,13 +97,13 @@ impl Connection{
 
         let Connection{send: ConnectionSendPart{mut sink,token},recv} = self;
 
-        let mut client = crate::Client::new(token);
+        let client = crate::Client::new(token);
 
         let mut event_stream = recv.event_stream();
         while let Some(res) = await!(event_stream.next()){
             match res?{
                 Either::A(_send_heatbeat) => {
-                    eprintln!("sending heartbeat");
+                    //eprintln!("sending heartbeat");
                     sink = await!(sink.send(model::Heartbeat.into()))?;
                 }
                 Either::B(event) => {
@@ -129,31 +129,31 @@ impl Connection{
         let sink: Box<Sink<SinkItem=_,SinkError=_>+Send> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::SendablePayload|{
             let payload = model::Payload::try_from_sendable(payload)?;
             let payload = serde_json::to_string(&payload)?;
-            eprintln!("sending payload: {:?}",payload);
+            //eprintln!("sending payload: {:?}",payload);
             Ok(tungstenite::Message::Text(payload))
         }));
         let stream = Box::new(stream.map_err(Error::from).and_then(|message|{
             let text = message.into_text()?;
-            eprintln!("Parsing: {}",&text);
+            //eprintln!("Parsing: {}",&text);
             let payload: model::Payload = serde_json::from_str(&text)?;
             Ok(payload.received_event_data()?)
         }));
         let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
 
-        eprintln!("packet, should be hello: {:#?}",payload);
+        //eprintln!("packet, should be hello: {:#?}",payload);
         let hello = payload.unwrap().expect_hello();
         let heartbeat_interval = hello.heartbeat_interval;
-        eprintln!("{:#?}",hello);
+        //eprintln!("{:#?}",hello);
         let identify = model::Identify::new(token.clone());
-        eprintln!("sending identify payload: {:#?}",identify);
+        //eprintln!("sending identify payload: {:#?}",identify);
 
         let sink = CloseOnDrop(await!(sink.send(identify.into()))?);
 
         let (payload,stream) = await!(stream.into_future().map_err(|(err,_strm)| err))?;
 
-        eprintln!("packet, should be event ready: {:?}",payload);
-        let ready = payload.unwrap().expect_event().expect_ready();
-        eprintln!("{:?}",ready);
+        //eprintln!("packet, should be event ready: {:?}",payload);
+        let _ready = payload.unwrap().expect_event().expect_ready();
+        //eprintln!("{:?}",ready);
 
         Ok(Self{
             send: ConnectionSendPart{
