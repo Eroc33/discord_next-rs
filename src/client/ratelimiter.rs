@@ -17,11 +17,13 @@ impl RateLimitState{
 		Some(self.remaining)
 	}
 	pub fn use_one(&mut self) -> bool{
-		if self.get_remaining() == Some(0) {
-			return false;
+		match self.get_remaining() {
+            Some(0) | None => false,
+			_other => {
+                self.remaining -= 1;
+		        true
+            }
 		}
-		self.remaining -= 1;
-		true
 	}
 
     pub fn time_to_reset(&self) -> Duration{
