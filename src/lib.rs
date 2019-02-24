@@ -17,6 +17,8 @@ extern crate futures;
 #[macro_use]
 extern crate bitflags;
 extern crate itertools;
+#[macro_use]
+extern crate log;
 
 pub mod model;
 mod connection;

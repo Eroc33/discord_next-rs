@@ -85,9 +85,9 @@ impl RateLimiter{
                 std::cmp::max(wait_endpoint,wait_global)
             };
             if let Some(wait) = wait{
-                eprintln!("Waiting on ratelimit: {:?}",wait);
+                trace!("Waiting on ratelimit: {:?}",wait);
                 await!(tokio::timer::Delay::new(wait))?;
-                eprintln!("Rate limit wait complete");
+                trace!("Rate limit wait complete");
             }
             if self.use_resource(endpoint){
                 return Ok(());
@@ -124,7 +124,7 @@ impl RateLimiter{
             }
             Err(e) => {
                 //Not fatal, so only warn
-                eprintln!("WARNING: Could not parse ratelimits: {:?}",e);
+                warn!("Could not parse ratelimits: {:?}",e);
                 return;
             }
         };
