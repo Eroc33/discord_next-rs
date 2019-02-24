@@ -86,7 +86,7 @@ impl Embed{
             return Err(EmbedTooBigError::FieldTooBig{field: "title", length: title_len, max: 256});
         }
         let description_len = self.description.as_ref().map(|s| s.len()).unwrap_or(0);
-        if description_len > 256 {
+        if description_len > 2048 {
             return Err(EmbedTooBigError::FieldTooBig{field: "description", length: description_len, max: 2048});
         }
         if let Some(fields) = self.fields.as_ref(){
