@@ -54,7 +54,7 @@ pub struct UpdateStatus{
 }
 
 impl UpdateStatus{
-    fn new_basic(status: Status, afk: bool) -> Self{
+    pub fn new_basic(status: Status, afk: bool) -> Self{
         UpdateStatus{
             since: Default::default(),
             game: Default::default(),
@@ -411,63 +411,63 @@ pub struct Guild{
 bitflags! {
     pub struct Permissions: u64 {
         ///Allows creation of instant invites
-        const CREATE_INSTANT_INVITE = 0x00000001;
+        const CREATE_INSTANT_INVITE = 0x0000_0001;
         ///Allows kicking members
-        const KICK_MEMBERS = 0x00000002;
+        const KICK_MEMBERS = 0x0000_0002;
         ///Allows banning members
-        const BAN_MEMBERS = 0x00000004;
+        const BAN_MEMBERS = 0x0000_0004;
         ///Allows all permissions and bypasses channel permission overwrites
-        const ADMINISTRATOR = 0x00000008;
+        const ADMINISTRATOR = 0x0000_0008;
         ///Allows management and editing of channels
-        const MANAGE_CHANNELS = 0x00000010;
+        const MANAGE_CHANNELS = 0x0000_0010;
         ///Allows management and editing of the guild
-        const MANAGE_GUILD = 0x00000020;
+        const MANAGE_GUILD = 0x0000_0020;
         ///Allows for the addition of reactions to messages
-        const ADD_REACTIONS = 0x00000040;
+        const ADD_REACTIONS = 0x0000_0040;
         ///Allows for viewing of audit logs
-        const VIEW_AUDIT_LOG = 0x00000080;
+        const VIEW_AUDIT_LOG = 0x0000_0080;
         ///Allows guild members to view a channel, which includes reading messages in text channels
-        const VIEW_CHANNEL = 0x00000400;
+        const VIEW_CHANNEL = 0x0000_0400;
         ///Allows for sending messages in a channel
-        const SEND_MESSAGES = 0x00000800;
+        const SEND_MESSAGES = 0x0000_0800;
         ///Allows for sending of /tts messages
-        const SEND_TTS_MESSAGES = 0x00001000;
+        const SEND_TTS_MESSAGES = 0x0000_1000;
         ///Allows for deletion of other users messages
-        const MANAGE_MESSAGES = 0x00002000;
+        const MANAGE_MESSAGES = 0x0000_2000;
         ///Links sent by users with this permission will be auto-embedded
-        const EMBED_LINKS = 0x00004000;
+        const EMBED_LINKS = 0x0000_4000;
         ///Allows for uploading images and files
-        const ATTACH_FILES = 0x00008000;
+        const ATTACH_FILES = 0x0000_8000;
         ///Allows for reading of message history
-        const READ_MESSAGE_HISTORY = 0x00010000;
+        const READ_MESSAGE_HISTORY = 0x0001_0000;
         ///Allows for using the @everyone tag to notify all users in a channel, and the @here tag to notify all online users in a channel
-        const MENTION_EVERYONE = 0x00020000;
+        const MENTION_EVERYONE = 0x0002_0000;
         ///Allows the usage of custom emojis from other servers
-        const USE_EXTERNAL_EMOJIS = 0x00040000;
+        const USE_EXTERNAL_EMOJIS = 0x0004_0000;
         ///Allows for joining of a voice channel
-        const CONNECT = 0x00100000;
+        const CONNECT = 0x0010_0000;
         ///Allows for speaking in a voice channel
-        const SPEAK = 0x00200000;
+        const SPEAK = 0x0020_0000;
         ///Allows for muting members in a voice channel
-        const MUTE_MEMBERS = 0x00400000;
+        const MUTE_MEMBERS = 0x0040_0000;
         ///Allows for deafening of members in a voice channel
-        const DEAFEN_MEMBERS = 0x00800000;
+        const DEAFEN_MEMBERS = 0x0080_0000;
         ///Allows for moving of members between voice channels
-        const MOVE_MEMBERS = 0x01000000;
+        const MOVE_MEMBERS = 0x0100_0000;
         ///Allows for using voice-activity-detection in a voice channel
-        const USE_VAD = 0x02000000;
+        const USE_VAD = 0x0200_0000;
         ///Allows for using priority speaker in a voice channel
-        const PRIORITY_SPEAKER = 0x00000100;
+        const PRIORITY_SPEAKER = 0x0000_0100;
         ///Allows for modification of own nickname
-        const CHANGE_NICK_NAME = 0x04000000;
+        const CHANGE_NICK_NAME = 0x0400_0000;
         ///Allows for modification of other users nicknames
-        const MANAGE_NICK_NAMES = 0x08000000;
+        const MANAGE_NICK_NAMES = 0x0800_0000;
         ///Allows management and editing of roles
-        const MANAGE_ROLES = 0x10000000;
+        const MANAGE_ROLES = 0x1000_0000;
         ///Allows management and editing of webhooks
-        const MANAGE_WEB_HOOKS = 0x20000000;
+        const MANAGE_WEB_HOOKS = 0x2000_0000;
         ///Allows management and editing of emojis
-        const MANAGE_EMOJIS = 0x40000000;
+        const MANAGE_EMOJIS = 0x4000_0000;
     }
 }
 

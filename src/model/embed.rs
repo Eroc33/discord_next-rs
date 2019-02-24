@@ -68,24 +68,24 @@ impl Embed{
         self.fields.as_mut().expect("just set fields to be Some").push(field)
     }
     pub fn data_size(&self) -> usize{
-        self.title.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.description.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.footer.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.image.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.thumbnail.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.video.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.provider.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.author.as_ref().map(|s| s.data_size()).unwrap_or(0) + 
-        self.fields.as_ref().map(|fs| fs.iter().map(|f| f.data_size()).sum()).unwrap_or(0)
+        self.title.as_ref().map(String::len).unwrap_or(0) + 
+        self.description.as_ref().map(String::len).unwrap_or(0) + 
+        self.url.as_ref().map(String::len).unwrap_or(0) + 
+        self.footer.as_ref().map(EmbedFooter::data_size).unwrap_or(0) + 
+        self.image.as_ref().map(EmbedImage::data_size).unwrap_or(0) + 
+        self.thumbnail.as_ref().map(EmbedThumbnail::data_size).unwrap_or(0) + 
+        self.video.as_ref().map(EmbedVideo::data_size).unwrap_or(0) + 
+        self.provider.as_ref().map(EmbedProvider::data_size).unwrap_or(0) + 
+        self.author.as_ref().map(EmbedAuthor::data_size).unwrap_or(0) + 
+        self.fields.as_ref().map(|fs| fs.iter().map(EmbedField::data_size).sum()).unwrap_or(0)
     }
     pub fn enforce_embed_limits(&self) -> Result<(),EmbedTooBigError>
     {
-        let title_len = self.title.as_ref().map(|s| s.len()).unwrap_or(0);
+        let title_len = self.title.as_ref().map(String::len).unwrap_or(0);
         if title_len > 256 {
             return Err(EmbedTooBigError::FieldTooBig{field: "title", length: title_len, max: 256});
         }
-        let description_len = self.description.as_ref().map(|s| s.len()).unwrap_or(0);
+        let description_len = self.description.as_ref().map(String::len).unwrap_or(0);
         if description_len > 2048 {
             return Err(EmbedTooBigError::FieldTooBig{field: "description", length: description_len, max: 2048});
         }
@@ -123,8 +123,8 @@ pub struct EmbedThumbnail{
 impl EmbedThumbnail{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.proxy_url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.url.as_ref().map(String::len).unwrap_or(0) + 
+        self.proxy_url.as_ref().map(String::len).unwrap_or(0)
     }
 }
 
@@ -144,7 +144,7 @@ pub struct EmbedVideo{
 impl EmbedVideo{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.url.as_ref().map(String::len).unwrap_or(0)
     }
 }
 
@@ -167,8 +167,8 @@ pub struct EmbedImage{
 impl EmbedImage{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.proxy_url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.url.as_ref().map(String::len).unwrap_or(0) + 
+        self.proxy_url.as_ref().map(String::len).unwrap_or(0)
     }
 }
 
@@ -185,8 +185,8 @@ pub struct EmbedProvider{
 impl EmbedProvider{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
-        self.name.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.name.as_ref().map(String::len).unwrap_or(0) + 
+        self.url.as_ref().map(String::len).unwrap_or(0)
     }
 }
 
@@ -209,13 +209,13 @@ pub struct EmbedAuthor{
 impl EmbedAuthor{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
-        self.name.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.icon_url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.proxy_icon_url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.name.as_ref().map(String::len).unwrap_or(0) + 
+        self.url.as_ref().map(String::len).unwrap_or(0) + 
+        self.icon_url.as_ref().map(String::len).unwrap_or(0) + 
+        self.proxy_icon_url.as_ref().map(String::len).unwrap_or(0)
     }
     pub fn enforce_embed_limits(&self) -> Result<(),EmbedTooBigError>{
-        let name_len = self.name.as_ref().map(|s| s.len()).unwrap_or(0);
+        let name_len = self.name.as_ref().map(String::len).unwrap_or(0);
         if name_len > 256 {
             return Err(EmbedTooBigError::FieldTooBig{field: "footer.name",length: name_len, max: 256});
         }
@@ -239,8 +239,8 @@ impl EmbedFooter{
     //TODO: clarify: do urls count towards the size limit?
     pub fn data_size(&self) -> usize{
         self.text.len() + 
-        self.icon_url.as_ref().map(|s| s.len()).unwrap_or(0) + 
-        self.proxy_icon_url.as_ref().map(|s| s.len()).unwrap_or(0)
+        self.icon_url.as_ref().map(String::len).unwrap_or(0) + 
+        self.proxy_icon_url.as_ref().map(String::len).unwrap_or(0)
     }
     pub fn enforce_embed_limits(&self) -> Result<(),EmbedTooBigError>{
         if self.text.len() > 2048 {

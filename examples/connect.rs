@@ -1,9 +1,7 @@
-#![feature(async_await, await_macro)]
+#![feature(async_await, await_macro, futures_api)]
 extern crate tokio;
 extern crate discord_next;
 extern crate dotenv;
-
-use tokio::prelude::*;
 
 fn main(){
     dotenv::dotenv().ok();

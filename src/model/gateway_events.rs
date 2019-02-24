@@ -187,44 +187,6 @@ wrapping_from!(ReceivableEvent,WebhooksUpdate,expect_webhooks_update);
 
 //TODO: replace this cyber-chef copypaste mess with serde if possible
 impl ReceivableEvent{
-    fn name(&self) -> &'static str
-    {
-        match self{
-            ReceivableEvent::Ready(_)                    => "READY",
-            ReceivableEvent::Resumed(_)                  => "RESUMED",
-            ReceivableEvent::ChannelCreate(_)            => "CHANNEL_CREATE",
-            ReceivableEvent::ChannelUpdate(_)            => "CHANNEL_UPDATE",
-            ReceivableEvent::ChannelDelete(_)            => "CHANNEL_DELETE",
-            ReceivableEvent::ChannelPinsUpdate(_)        => "CHANNEL_PINS_UPDATE",
-            ReceivableEvent::GuildCreate(_)              => "GUILD_CREATE",
-            ReceivableEvent::GuildUpdate(_)              => "GUILD_UPDATE",
-            ReceivableEvent::GuildDelete(_)              => "GUILD_DELETE",
-            ReceivableEvent::GuildBanAdd(_)              => "GUILD_BAN_ADD",
-            ReceivableEvent::GuildBanRemove(_)           => "GUILD_BAN_REMOVE",
-            ReceivableEvent::GuildEmojisUpdate(_)        => "GUILD_EMOJIS_UPDATE",
-            ReceivableEvent::GuildIntegrationsUpdate(_)  => "GUILD_INTEGRATIONS_UPDATE",
-            ReceivableEvent::GuildMemberAdd(_)           => "GUILD_MEMBER_ADD",
-            ReceivableEvent::GuildMemberRemove(_)        => "GUILD_MEMBER_REMOVE",
-            ReceivableEvent::GuildMemberUpdate(_)        => "GUILD_MEMBER_UPDATE",
-            ReceivableEvent::GuildMembersChunk(_)        => "GUILD_MEMBERS_CHUNK",
-            ReceivableEvent::GuildRoleCreate(_)          => "GUILD_ROLE_CREATE",
-            ReceivableEvent::GuildRoleUpdate(_)          => "GUILD_ROLE_UPDATE",
-            ReceivableEvent::GuildRoleDelete(_)          => "GUILD_ROLE_DELETE",
-            ReceivableEvent::MessageCreate(_)            => "MESSAGE_CREATE",
-            ReceivableEvent::MessageUpdate(_)            => "MESSAGE_UPDATE",
-            ReceivableEvent::MessageDelete(_)            => "MESSAGE_DELETE",
-            ReceivableEvent::MessageDeleteBulk(_)        => "MESSAGE_DELETE_BULK",
-            ReceivableEvent::MessageReactionAdd(_)       => "MESSAGE_REACTION_ADD",
-            ReceivableEvent::MessageReactionRemove(_)    => "MESSAGE_REACTION_REMOVE",
-            ReceivableEvent::MessageReactionRemoveAll(_) => "MESSAGE_REACTION_REMOVE_ALL",
-            ReceivableEvent::PresenceUpdate(_)           => "PRESENCE_UPDATE",
-            ReceivableEvent::TypingStart(_)              => "TYPING_START",
-            ReceivableEvent::UserUpdate(_)               => "USER_UPDATE",
-            ReceivableEvent::VoiceStateUpdate(_)         => "VOICE_STATE_UPDATE",
-            ReceivableEvent::VoiceServerUpdate(_)        => "VOICE_SERVER_UPDATE",
-            ReceivableEvent::WebhooksUpdate(_)           => "WEBHOOKS_UPDATE",
-        }
-    }
     fn from_payload(payload: Payload) -> Result<Self,serde_json::Error>{
         match payload.t {
             Some(s) => match s.as_str(){

@@ -1,12 +1,10 @@
-#![feature(async_await, await_macro)]
+#![feature(async_await, await_macro, futures_api)]
 extern crate tokio;
 extern crate discord_next;
 extern crate dotenv;
 extern crate envy;
 #[macro_use]
 extern crate serde_derive;
-
-use tokio::prelude::*;
 
 #[derive(Deserialize, Debug)]
 struct EnvVars{
@@ -33,13 +31,13 @@ fn main(){
                 return;
             }
         };
-        let res = await!(conn.run(async move |event,client|{
+        let res: Result<(),discord_next::Error> = await!(conn.run(async move |event, client|{
             println!("event: {:?}:", event);
             match event{
                 discord_next::model::ReceivableEvent::MessageCreate(msg) => {
                     if msg.content.starts_with(ACTIVATOR) {
-                        let cmd = &msg.content[ACTIVATOR.len()..].trim();
-                        await!(client.send_message(msg.channel_id,discord_next::NewMessage{content: (*cmd).into(), ..Default::default()}))?;
+                        let cmd: String = msg.content[ACTIVATOR.len()..].trim().to_owned();
+                        await!(client.send_message(msg.channel_id,discord_next::NewMessage::text(cmd)))?;
                     }
                 }
                 _other => {}

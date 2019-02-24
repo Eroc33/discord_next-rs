@@ -59,7 +59,7 @@ pub struct RateLimiter{
 
 impl RateLimiter{
     //TODO: this might have performance issues. investigate fine-grained locking
-	pub async fn enforce_limit<'a>(&'a self,endpoint: &'a String) -> Result<(),tokio::timer::Error>{
+	pub async fn enforce_limit<'a>(&'a self,endpoint: &'a str) -> Result<(),tokio::timer::Error>{
         loop{
             //get any required wait first, then run it once the rate_limits guard is dropped to avoid lock contention
             let wait = {
@@ -97,7 +97,7 @@ impl RateLimiter{
         }
 	}
 
-    fn use_resource(&self, endpoint: &String) -> bool{
+    fn use_resource(&self, endpoint: &str) -> bool{
         let mut guard = self.rate_limits.write().expect("Rate limits poisoned");
         let endpoint_allowed = if let Some(rate_limit) = guard.get_mut(endpoint){
             rate_limit.use_one()
@@ -129,10 +129,11 @@ impl RateLimiter{
             }
         };
 
-        let mut entry = endpoint;
-        if global {
-            entry = "GLOBAL".into();
-        }
+        let entry = if global {
+             "GLOBAL".into()
+        }else{
+            endpoint
+        };
 
         self.rate_limits.write().unwrap().insert(entry,rate_limit);
     }

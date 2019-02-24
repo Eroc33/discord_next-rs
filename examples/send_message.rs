@@ -1,12 +1,10 @@
-#![feature(async_await, await_macro)]
+#![feature(async_await, await_macro, futures_api)]
 extern crate tokio;
 extern crate discord_next;
 extern crate dotenv;
 extern crate envy;
 #[macro_use]
 extern crate serde_derive;
-
-use tokio::prelude::*;
 
 #[derive(Deserialize, Debug)]
 struct EnvVars{
