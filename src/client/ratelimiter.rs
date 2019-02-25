@@ -3,6 +3,7 @@ use std::time::{Duration,Instant};
 use chrono::{DateTime,NaiveDateTime,Utc};
 use std::collections::HashMap;
 
+#[derive(Debug)]
 struct RateLimitState{
 	limit: usize,
 	remaining: usize,
@@ -17,8 +18,12 @@ impl RateLimitState{
 		Some(self.remaining)
 	}
 	pub fn use_one(&mut self) -> bool{
-		match self.get_remaining() {
-            Some(0) | None => false,
+        if self.reset_at <= Utc::now() {
+            //assume we will be granted some rate limit not that reset is passed
+			return true;
+		}
+		match self.remaining {
+            0 => false,
 			_other => {
                 self.remaining -= 1;
 		        true
@@ -27,7 +32,7 @@ impl RateLimitState{
 	}
 
     pub fn time_to_reset(&self) -> Duration{
-        Duration::from_secs(self.reset_at.timestamp() as u64)-Duration::from_secs(Utc::now().timestamp() as u64)
+        Duration::from_secs((self.reset_at.timestamp()-Utc::now().timestamp()) as u64)
     }
 
     pub fn parse(headers: &reqwest::header::HeaderMap) -> Result<Option<Self>,failure::Error>
@@ -82,6 +87,7 @@ impl RateLimiter{
                 }else{
                     None
                 };
+                debug!("Rate limit state: {:?}",self.rate_limits.read());
                 std::cmp::max(wait_endpoint,wait_global)
             };
             if let Some(wait) = wait{

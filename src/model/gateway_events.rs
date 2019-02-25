@@ -158,6 +158,8 @@ pub enum ReceivableEvent{
     VoiceServerUpdate(VoiceServerUpdate),
     //guild channel webhook was created, update, or deleted
     WebhooksUpdate(WebhooksUpdate),
+    //Holds unkown events for limited forwards compatibility
+    Unknown{name: String, value: serde_json::Value}
 }
 
 wrapping_from!(ReceivableEvent,Ready,expect_ready);
@@ -223,7 +225,10 @@ impl ReceivableEvent{
                 "VOICE_STATE_UPDATE" => Ok(ReceivableEvent::VoiceStateUpdate(serde_json::from_value(payload.d)?)),
                 "VOICE_SERVER_UPDATE" => Ok(ReceivableEvent::VoiceServerUpdate(serde_json::from_value(payload.d)?)),
                 "WEBHOOKS_UPDATE" => Ok(ReceivableEvent::WebhooksUpdate(serde_json::from_value(payload.d)?)),
-                other => panic!("Unknown named event: {:?}",other),
+                name => {
+                    warn!("Unknown payload type: {}",name);
+                    Ok(ReceivableEvent::Unknown{name: name.into(), value: payload.d})
+                }
             }
             None => panic!("Event payload should always have a name"),
         }
