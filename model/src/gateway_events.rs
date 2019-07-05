@@ -26,9 +26,9 @@ impl Payload{
             4  => panic!("Should never recieve voice update payloads"),
             5  => panic!("Should never recieve voice ping payloads"),
             6  => panic!("Should never recieve ping payloads"),
-            7  => unimplemented!("Op Reconnect nyi"),
+            7  => GatewayEvent::Reconnect,
             8  => panic!("Should never recieve request guild members payloads"),
-            9  => unimplemented!("Op Invalid Session nyi"),
+            9  => GatewayEvent::InvalidSession(InvalidSession{resumable: serde_json::from_value(self.d)?}),
             10 => serde_json::from_value::<Hello>(self.d)?.into(),
             11 => GatewayEvent::HeartbeatAck,
             other => unimplemented!("Unknown op {}",other),
@@ -141,11 +141,19 @@ pub enum GatewayEvent{
     ReceivableEvent(ReceivableEvent),
     HeartbeatAck,
     HeartbeatRequest,
-    //TODO: moar
+    //indicates the client should reconnect
+    Reconnect,
+    InvalidSession(InvalidSession),
 }
 
 wrapping_from!(GatewayEvent,Hello,expect_hello);
 wrapping_from!(GatewayEvent,ReceivableEvent,expect_event);
+wrapping_from!(GatewayEvent,InvalidSession,expect_invalid_session);
+
+#[derive(Debug)]
+pub struct InvalidSession{
+    resumable: bool,
+}
 
 #[derive(Debug,Deserialize)]
 pub enum ReceivableEvent{
