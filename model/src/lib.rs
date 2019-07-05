@@ -1,6 +1,9 @@
 use chrono::{DateTime,FixedOffset};
 use serde_json;
 
+use serde::{Deserialize,Serialize};
+use bitflags::bitflags;
+
 mod ids;
 pub use ids::*;
 mod gateway_events;
@@ -32,11 +35,19 @@ impl Default for ConnectionProperties{
 
 #[derive(Debug,Deserialize,Serialize)]
 pub enum Status{
-    #[serde(rename = "online")]	Online,
-    #[serde(rename = "dnd")]	DoNotDisturb,
-    #[serde(rename = "idle")]	AFK,
-    #[serde(rename = "invisible")]	Invisible,
-    #[serde(rename = "offline")]	Offline,
+    #[serde(rename = "online")]
+    Online,
+    //do not disturb`
+    #[serde(rename = "dnd")]
+    DoNotDisturb,
+    //away from keyboard
+    #[serde(rename = "idle")]
+    AFK,
+    //user is invisible, and shown as offline (probably never received)
+    #[serde(rename = "invisible")]
+    Invisible,
+    #[serde(rename = "offline")]
+    Offline,
 }
 
 #[derive(Debug,Deserialize,Serialize)]

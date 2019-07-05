@@ -1,26 +1,19 @@
 #![feature(try_from,generators,await_macro, async_await, futures_api)]
-extern crate reqwest;
 #[macro_use]
 extern crate tokio;
-extern crate tungstenite;
-extern crate tokio_tungstenite;
-extern crate tokio_tls;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate failure;
-extern crate url;
-extern crate futures;
 #[macro_use]
 extern crate bitflags;
-extern crate itertools;
 #[macro_use]
 extern crate log;
 
-pub mod model;
+pub use discord_next_model as model;
+
 mod connection;
 mod client;
 pub use connection::*;
@@ -86,6 +79,7 @@ impl From<serde_json::Error> for Error{
     }
 }
 
+#[cfg(feature="connection")]
 impl From<tokio::timer::Error> for Error{
     fn from(e: tokio::timer::Error) -> Self{
         Error::HeartbeatTimer(e)

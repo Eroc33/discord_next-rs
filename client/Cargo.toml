@@ -1,0 +1,41 @@
+[package]
+authors = ["Euan Rochester <euan@rochester.me.uk>"]
+edition = "2018"
+name = "discord_next"
+version = "0.1.0"
+
+[features]
+default = []
+voice = ["rust_sodium"]
+
+[dependencies]
+bitflags = "1.0.4"
+failure = "0.1.1"
+futures-preview = "=0.3.0-alpha.17"
+itertools = "0.8.0"
+log = "0.4.6"
+reqwest = "0.9"
+serde = {version="1.0.87", features=["derive"]}
+serde_derive = "1.0.87"
+serde_json = "1.0.38"
+tokio-tls = {git="https://github.com/tokio-rs/tokio"}
+tokio-tungstenite = "0.6.0"
+tungstenite = "0.6.0"
+url = "1.7.2"
+discord_next_model = {path="../model"}
+
+[dependencies.rust_sodium]
+version = "0.10.2"
+optional = true
+
+[dependencies.chrono]
+features = ["serde"]
+version = "0.4.6"
+
+[dependencies.tokio]
+git = "https://github.com/tokio-rs/tokio"
+optional=true
+
+[dev-dependencies]
+dotenv = "0.13.0"
+envy = "0.3"

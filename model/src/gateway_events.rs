@@ -1,5 +1,8 @@
 use super::*;
 
+use serde::{Deserialize,Serialize};
+use log::warn;
+
 #[derive(Debug,Deserialize,Serialize)]
 pub struct Payload{
     //opcode for the payload
@@ -13,10 +16,10 @@ pub struct Payload{
 }
 
 impl Payload{
-    pub fn received_event_data(self) -> Result<ReceivablePayload,crate::Error>{
+    pub fn received_event_data(self) -> Result<GatewayEvent,serde_json::Error>{
         Ok(match self.op{
             0  => ReceivableEvent::from_payload(self)?.into(),
-            1  => ReceivablePayload::HeartbeatRequest,
+            1  => GatewayEvent::HeartbeatRequest,
             //TODO: just ignore send only ops rather than panic?
             2  => panic!("Should never recieve identify payloads"),
             3  => panic!("Should never recieve status update payloads"),
@@ -27,19 +30,25 @@ impl Payload{
             8  => panic!("Should never recieve request guild members payloads"),
             9  => unimplemented!("Op Invalid Session nyi"),
             10 => serde_json::from_value::<Hello>(self.d)?.into(),
-            11 => ReceivablePayload::HeartbeatAck,
+            11 => GatewayEvent::HeartbeatAck,
             other => unimplemented!("Unknown op {}",other),
         })
     }
 }
 
 impl Payload{
-    pub fn try_from_sendable<P: Into<SendablePayload>>(payload: P) -> Result<Self,crate::Error>{
+    pub fn try_from_command<P: Into<GatewayCommand>>(payload: P) -> Result<Self,serde_json::Error>{
+        use self::GatewayCommand::*;
         let payload = payload.into();
 
         let (op,payload) = match payload{
-            SendablePayload::Identify(identify) => (2,serde_json::to_value(identify)?),
-            SendablePayload::Heartbeat(_) => (1,serde_json::Value::Null),
+            Heartbeat(heartbeat) => (1,serde_json::to_value(heartbeat.last_seq)?),
+            Identify(identify) => (2,serde_json::to_value(identify)?),
+            StatusUpdate(status_update) => (3,serde_json::to_value(status_update)?),
+            #[cfg(feature="voice")]
+            VoiceStateUpdate(voice_status_update) => (4,serde_json::to_value(voice_status_update)?),
+            Resume(resume) => (6,serde_json::to_value(resume)?),
+            RequestGuildMembers(request_guild_members) => (8,serde_json::to_value(request_guild_members)?),
         };
         Ok(Payload{
             op,
@@ -70,16 +79,64 @@ macro_rules! wrapping_from {
 }
 
 #[derive(Debug)]
-pub enum SendablePayload{
-    Identify(Identify),
+pub enum GatewayCommand{
     Heartbeat(Heartbeat),
+    Identify(Identify),
+    StatusUpdate(StatusUpdate),
+    #[cfg(feature="voice")]
+    VoiceStateUpdate(VoiceStateUpdate),
+    Resume(Resume),
+    RequestGuildMembers(RequestGuildMembers),
 }
 
-wrapping_from!(SendablePayload,Identify,expect_identify);
-wrapping_from!(SendablePayload,Heartbeat,expect_heartbeat);
+#[derive(Debug,Serialize)]
+pub struct VoiceStateUpdate{
+    //id of the guild
+    guild_id: Snowflake,
+    //id of the voice channel client wants to join (null if disconnecting)
+    channel_id: Option<Snowflake>,
+    //is the client muted
+    self_mute: bool,
+    //is the client deafened
+    self_deaf: bool,
+}
+
+#[derive(Debug,Serialize)]
+pub struct StatusUpdate{
+    //unix time (in milliseconds) of when the client went idle, or null if the client is not idle
+    since: Option<u64>,
+    // The user's new activity
+    game: Option<Activity>,
+    //the user's new status
+    status:	String,
+    //whether or not the client is afk
+    afk: bool,
+}
+
+#[derive(Debug,Serialize)]
+pub struct RequestGuildMembers{
+    //id of the guild(s) to get members for
+    guild_id: Vec<Snowflake>,
+    //string that username starts with, or an empty string to return all members
+    query: String,
+    //maximum number of members to send or 0 to request all members matched
+    limit: u64,
+}
+
+#[derive(Debug,Serialize)]
+pub struct Resume{
+    //session token
+    token: String,
+    session_id: String,
+    //last sequence number received
+    seq: u64,
+}
+
+wrapping_from!(GatewayCommand,Identify,expect_identify);
+wrapping_from!(GatewayCommand,Heartbeat,expect_heartbeat);
 
 #[derive(Debug)]
-pub enum ReceivablePayload{
+pub enum GatewayEvent{
     Hello(Hello),
     ReceivableEvent(ReceivableEvent),
     HeartbeatAck,
@@ -87,8 +144,8 @@ pub enum ReceivablePayload{
     //TODO: moar
 }
 
-wrapping_from!(ReceivablePayload,Hello,expect_hello);
-wrapping_from!(ReceivablePayload,ReceivableEvent,expect_event);
+wrapping_from!(GatewayEvent,Hello,expect_hello);
+wrapping_from!(GatewayEvent,ReceivableEvent,expect_event);
 
 #[derive(Debug,Deserialize)]
 pub enum ReceivableEvent{
@@ -187,56 +244,74 @@ wrapping_from!(ReceivableEvent,TypingStart,expect_typing_start);
 wrapping_from!(ReceivableEvent,VoiceServerUpdate,expect_voice_server_update);
 wrapping_from!(ReceivableEvent,WebhooksUpdate,expect_webhooks_update);
 
-//TODO: replace this cyber-chef copypaste mess with serde if possible
+
+//TODO: replace this mess with better macros or codegen if possible
 impl ReceivableEvent{
     fn from_payload(payload: Payload) -> Result<Self,serde_json::Error>{
-        match payload.t {
-            Some(s) => match s.as_str(){
-                "READY" => Ok(ReceivableEvent::Ready(serde_json::from_value(payload.d)?)),
-                "RESUMED" => Ok(ReceivableEvent::Resumed(serde_json::from_value(payload.d)?)),
-                "CHANNEL_CREATE" => Ok(ReceivableEvent::ChannelCreate(serde_json::from_value(payload.d)?)),
-                "CHANNEL_UPDATE" => Ok(ReceivableEvent::ChannelUpdate(serde_json::from_value(payload.d)?)),
-                "CHANNEL_DELETE" => Ok(ReceivableEvent::ChannelDelete(serde_json::from_value(payload.d)?)),
-                "CHANNEL_PINS_UPDATE" => Ok(ReceivableEvent::ChannelPinsUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_CREATE" => Ok(ReceivableEvent::GuildCreate(serde_json::from_value(payload.d)?)),
-                "GUILD_UPDATE" => Ok(ReceivableEvent::GuildUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_DELETE" => Ok(ReceivableEvent::GuildDelete(serde_json::from_value(payload.d)?)),
-                "GUILD_BAN_ADD" => Ok(ReceivableEvent::GuildBanAdd(serde_json::from_value(payload.d)?)),
-                "GUILD_BAN_REMOVE" => Ok(ReceivableEvent::GuildBanRemove(serde_json::from_value(payload.d)?)),
-                "GUILD_EMOJIS_UPDATE" => Ok(ReceivableEvent::GuildEmojisUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_INTEGRATIONS_UPDATE" => Ok(ReceivableEvent::GuildIntegrationsUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_MEMBER_ADD" => Ok(ReceivableEvent::GuildMemberAdd(serde_json::from_value(payload.d)?)),
-                "GUILD_MEMBER_REMOVE" => Ok(ReceivableEvent::GuildMemberRemove(serde_json::from_value(payload.d)?)),
-                "GUILD_MEMBER_UPDATE" => Ok(ReceivableEvent::GuildMemberUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_MEMBERS_CHUNK" => Ok(ReceivableEvent::GuildMembersChunk(serde_json::from_value(payload.d)?)),
-                "GUILD_ROLE_CREATE" => Ok(ReceivableEvent::GuildRoleCreate(serde_json::from_value(payload.d)?)),
-                "GUILD_ROLE_UPDATE" => Ok(ReceivableEvent::GuildRoleUpdate(serde_json::from_value(payload.d)?)),
-                "GUILD_ROLE_DELETE" => Ok(ReceivableEvent::GuildRoleDelete(serde_json::from_value(payload.d)?)),
-                "MESSAGE_CREATE" => Ok(ReceivableEvent::MessageCreate(serde_json::from_value(payload.d)?)),
-                "MESSAGE_UPDATE" => Ok(ReceivableEvent::MessageUpdate(serde_json::from_value(payload.d)?)),
-                "MESSAGE_DELETE" => Ok(ReceivableEvent::MessageDelete(serde_json::from_value(payload.d)?)),
-                "MESSAGE_DELETE_BULK" => Ok(ReceivableEvent::MessageDeleteBulk(serde_json::from_value(payload.d)?)),
-                "MESSAGE_REACTION_ADD" => Ok(ReceivableEvent::MessageReactionAdd(serde_json::from_value(payload.d)?)),
-                "MESSAGE_REACTION_REMOVE" => Ok(ReceivableEvent::MessageReactionRemove(serde_json::from_value(payload.d)?)),
-                "MESSAGE_REACTION_REMOVE_ALL" => Ok(ReceivableEvent::MessageReactionRemoveAll(serde_json::from_value(payload.d)?)),
-                "PRESENCE_UPDATE" => Ok(ReceivableEvent::PresenceUpdate(serde_json::from_value(payload.d)?)),
-                "TYPING_START" => Ok(ReceivableEvent::TypingStart(serde_json::from_value(payload.d)?)),
-                "USER_UPDATE" => Ok(ReceivableEvent::UserUpdate(serde_json::from_value(payload.d)?)),
-                "VOICE_STATE_UPDATE" => Ok(ReceivableEvent::VoiceStateUpdate(serde_json::from_value(payload.d)?)),
-                "VOICE_SERVER_UPDATE" => Ok(ReceivableEvent::VoiceServerUpdate(serde_json::from_value(payload.d)?)),
-                "WEBHOOKS_UPDATE" => Ok(ReceivableEvent::WebhooksUpdate(serde_json::from_value(payload.d)?)),
-                name => {
-                    warn!("Unknown payload type: {}",name);
-                    Ok(ReceivableEvent::Unknown{name: name.into(), value: payload.d})
+        macro_rules! impl_recv_event_from_payload {
+            ($payload_expr:expr => {
+                $($name:expr => $variant:tt,)*
+            }) => {{
+                //ensure it's only evaluated once
+                let payload = $payload_expr;
+                match payload.t {
+                    Some(s) => match s.as_str(){
+                        $(
+                            $name => Ok(ReceivableEvent::$variant(serde_json::from_value(payload.d)?)),
+                        )*
+                        name => {
+                            warn!("Unknown payload type: {}",name);
+                            Ok(ReceivableEvent::Unknown{name: name.into(), value: payload.d})
+                        }
+                    }
+                    None => panic!("Event payload should always have a name"),
                 }
+            }};
+        }
+        impl_recv_event_from_payload!{
+            payload => {
+                "READY" => Ready,
+                "RESUMED" => Resumed,
+                "CHANNEL_CREATE" => ChannelCreate,
+                "CHANNEL_UPDATE" => ChannelUpdate,
+                "CHANNEL_DELETE" => ChannelDelete,
+                "CHANNEL_PINS_UPDATE" => ChannelPinsUpdate,
+                "GUILD_CREATE" => GuildCreate,
+                "GUILD_UPDATE" => GuildUpdate,
+                "GUILD_DELETE" => GuildDelete,
+                "GUILD_BAN_ADD" => GuildBanAdd,
+                "GUILD_BAN_REMOVE" => GuildBanRemove,
+                "GUILD_EMOJIS_UPDATE" => GuildEmojisUpdate,
+                "GUILD_INTEGRATIONS_UPDATE" => GuildIntegrationsUpdate,
+                "GUILD_MEMBER_ADD" => GuildMemberAdd,
+                "GUILD_MEMBER_REMOVE" => GuildMemberRemove,
+                "GUILD_MEMBER_UPDATE" => GuildMemberUpdate,
+                "GUILD_MEMBERS_CHUNK" => GuildMembersChunk,
+                "GUILD_ROLE_CREATE" => GuildRoleCreate,
+                "GUILD_ROLE_UPDATE" => GuildRoleUpdate,
+                "GUILD_ROLE_DELETE" => GuildRoleDelete,
+                "MESSAGE_CREATE" => MessageCreate,
+                "MESSAGE_UPDATE" => MessageUpdate,
+                "MESSAGE_DELETE" => MessageDelete,
+                "MESSAGE_DELETE_BULK" => MessageDeleteBulk,
+                "MESSAGE_REACTION_ADD" => MessageReactionAdd,
+                "MESSAGE_REACTION_REMOVE" => MessageReactionRemove,
+                "MESSAGE_REACTION_REMOVE_ALL" => MessageReactionRemoveAll,
+                "PRESENCE_UPDATE" => PresenceUpdate,
+                "TYPING_START" => TypingStart,
+                "USER_UPDATE" => UserUpdate,
+                "VOICE_STATE_UPDATE" => VoiceStateUpdate,
+                "VOICE_SERVER_UPDATE" => VoiceServerUpdate,
+                "WEBHOOKS_UPDATE" => WebhooksUpdate,
             }
-            None => panic!("Event payload should always have a name"),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Heartbeat;
+pub struct Heartbeat{
+    last_seq: Option<u64>,
+}
 
 #[derive(Debug,Deserialize,Serialize)]
 pub struct Hello{
@@ -247,14 +322,19 @@ pub struct Hello{
 
 #[derive(Debug,Deserialize,Serialize)]
 pub struct Identify{
+    //authentication token
     pub token: String,
     pub properties: ConnectionProperties,
+    //whether this connection supports compression of packets
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub compress: Option<bool>,
+    //value between 50 and 250, total number of members where the gateway will stop sending offline members in the guild member list
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub large_threshold: Option<u8>,
+    //used for Guild Sharding
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub shard: Option<[u8;2]>,
+    //initial presence information
     #[serde(default,skip_serializing_if = "Option::is_none")]
     pub presence: Option<UpdateStatus>
 }

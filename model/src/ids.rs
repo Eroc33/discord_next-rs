@@ -1,4 +1,4 @@
-use serde::de;
+use serde::{de,Deserialize,Serialize};
 
 #[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
