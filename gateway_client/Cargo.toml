@@ -11,18 +11,22 @@ voice = ["rust_sodium"]
 [dependencies]
 bitflags = "1.0.4"
 failure = "0.1.1"
-futures-preview = "=0.3.0-alpha.17"
+futures-preview = {version="=0.3.0-alpha.17",features=["nightly","async-await"]}
 itertools = "0.8.0"
 log = "0.4.6"
 reqwest = "0.9"
 serde = {version="1.0.87", features=["derive"]}
 serde_derive = "1.0.87"
 serde_json = "1.0.38"
-tokio-tls = {git="https://github.com/tokio-rs/tokio"}
 tokio-tungstenite = "0.6.0"
 tungstenite = "0.6.0"
 url = "1.7.2"
 discord_next_model = {path="../model"}
+discord_next_rest = {path="../rest_client"}
+
+[dependencies.futures_01]
+package = "futures"
+version = "0.1.28"
 
 [dependencies.rust_sodium]
 version = "0.10.2"
@@ -34,7 +38,10 @@ version = "0.4.6"
 
 [dependencies.tokio]
 git = "https://github.com/tokio-rs/tokio"
-optional=true
+
+[dependencies.tokio-timer]
+git = "https://github.com/tokio-rs/tokio"
+features = ["async-traits"]
 
 [dev-dependencies]
 dotenv = "0.13.0"

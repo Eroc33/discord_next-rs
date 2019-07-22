@@ -1,0 +1,31 @@
+[package]
+authors = ["Euan Rochester <euan@rochester.me.uk>"]
+edition = "2018"
+name = "discord_next_rest"
+version = "0.1.0"
+
+[features]
+default = []
+
+[dependencies]
+failure = "0.1.1"
+futures-preview = {version="=0.3.0-alpha.17",features=["compat"]}
+itertools = "0.8.0"
+log = "0.4.6"
+serde = {version="1.0.87", features=["derive"]}
+serde_derive = "1.0.87"
+serde_json = "1.0.38"
+url = "1.7.2"
+discord_next_model = {path="../model"}
+tokio = {git="https://github.com/tokio-rs/tokio.git"}
+hyper-tls = {git="https://github.com/95th/hyper-tls"}
+hyper = {git="https://github.com/hyperium/hyper"}
+http = "0.1.17"
+
+[dependencies.chrono]
+features = ["serde"]
+version = "0.4.6"
+
+[dev-dependencies]
+dotenv = "0.13.0"
+envy = "0.3"

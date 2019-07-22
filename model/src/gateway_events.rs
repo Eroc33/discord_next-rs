@@ -318,7 +318,7 @@ impl ReceivableEvent{
 
 #[derive(Debug)]
 pub struct Heartbeat{
-    last_seq: Option<u64>,
+    pub last_seq: Option<u64>,
 }
 
 #[derive(Debug,Deserialize,Serialize)]

@@ -1,18 +1,21 @@
 use crate::Error;
 use crate::model::{self,*};
-use crate::{API_BASE,GATEWAY_VERSION};
-use reqwest;
+use crate::{API_BASE};
 use serde::{de::DeserializeOwned,Serialize};
 use itertools::Itertools;
 use url::Url;
 use std::collections::HashMap;
+use futures::stream::TryStreamExt;
 
 mod ratelimiter;
 use ratelimiter::*;
 
+use hyper;
+use hyper_tls::HttpsConnector;
+
 #[derive(Clone)]
 pub struct Client{
-    http_client: reqwest::r#async::Client,
+    http_client: hyper::Client<HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
     bot_token: String,
     rate_limiter: RateLimiter,
     max_retries: u16
@@ -74,7 +77,7 @@ impl NewMessage{
     }
 
     pub async fn send(self, channel_id: ChannelId, client: &Client) -> Result<(),Error>{
-        await!(client.send_message(channel_id,self))?;
+        client.send_message(channel_id,self).await?;
         Ok(())
     }
 
@@ -97,8 +100,10 @@ impl NewMessage{
 
 impl Client{
     pub fn new<S: Into<String>>(bot_token: S) -> Self{
+        //TODO: propagate error instead of using expect
+        let https_connector = hyper_tls::HttpsConnector::new(4).expect("couldn't create https connector");
         Self{
-            http_client: reqwest::r#async::Client::new(),
+            http_client: hyper::client::Client::builder().build(https_connector),
             bot_token: bot_token.into(),
             max_retries: 5,
             rate_limiter: Default::default(),
@@ -108,21 +113,21 @@ impl Client{
     pub async fn send_message(&self,channel_id: ChannelId, new_message: NewMessage) -> Result<(),Error>{
         new_message.enforce_embed_limits()?;
         let url = format!("/channels/{channel_id}/messages",channel_id=(channel_id.0).0);
-        await!(self.post_json(None,url,new_message))
+        self.post_json(None,url,new_message).await
     }
 
     pub async fn get_guilds(&self) -> Result<Vec<PartialGuild>,Error>{
-        await!(self.get_json(None,"/users/@me/guilds"))
+        self.get_json(None,"/users/@me/guilds").await
     }
 
     pub async fn get_guild_channels(&self, guild_id: GuildId) -> Result<Vec<Channel>,Error>{
         let url = format!("/guilds/{guild_id}/channels",guild_id=(guild_id.0).0);
-        await!(self.get_json(None,url))
+        self.get_json(None,url).await
     }
 
     pub async fn create_private_channel(&self, recipient_id: UserId) -> Result<Channel,Error>{
         let url = "/users/@me/channels";
-        await!(self.post_return_json(None,url,json!({"recipient_id": recipient_id})))
+        self.post_return_json(None,url,json!({"recipient_id": recipient_id})).await
     }
 
     pub async fn get_messages(&self, channel_id: ChannelId, position: GetMessages, limit: Option<u32>) -> Result<Vec<Message>,Error>
@@ -140,14 +145,14 @@ impl Client{
         };
         let limit_url = format!("/channels/{channel_id}/messages",channel_id=(channel_id.0).0);
         let url = format!("{limit_url}{query_string}",limit_url=limit_url,query_string=query_string);
-        await!(self.get_json(limit_url,url))
+        self.get_json(limit_url,url).await
     }
 
     pub async fn delete_message(&self, channel_id: ChannelId, message_id: MessageId) -> Result<(),Error>{
         //delete is not under the same rate limiter as other verbs, so we prepend delete to get a different limiter
         let limit_url = format!("DELETE /channels/{channel_id}/messages/{{}}",channel_id=(channel_id.0).0);
         let url = format!("/channels/{channel_id}/messages/{message_id}", channel_id=(channel_id.0).0,message_id=(message_id.0).0);
-        await!(self.delete(limit_url,url))
+        self.delete(limit_url,url).await
     }
 
     pub async fn delete_messages<'a>(&'a self, channel_id: ChannelId, message_ids: &'a [MessageId]) -> Result<(),Error>
@@ -155,14 +160,14 @@ impl Client{
         //delete is not under the same rate limiter as other verbs, so we prepend delete to get a different limiter
         let limit_url = format!("DELETE /channels/{channel_id}/messages/bulk-delete",channel_id=(channel_id.0).0);
         let url = format!("/channels/{channel_id}/messages/bulk-delete",channel_id=(channel_id.0).0);
-        await!(self.post_json(limit_url,url,json!({"messages":message_ids})))
+        self.post_json(limit_url,url,json!({"messages":message_ids})).await
     }
 
     async fn delete<S1,S2>(&self, limit_url: S1, url: S2) -> Result<(),Error>
         where S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        await!(self.execute_request(reqwest::Method::DELETE, limit_url, url, move |builder| builder))?;
+        self.execute_request(hyper::Method::DELETE, limit_url, url, hyper::Body::empty()).await?;
         Ok(())
     }
     
@@ -171,8 +176,9 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        let mut res = await!(self.execute_request(reqwest::Method::GET, limit_url, url, move |builder| builder))?;
-        Ok(await!(res.json())?)
+        let res = self.execute_request(hyper::Method::GET, limit_url, url, hyper::Body::empty()).await?;
+        let bytes = res.into_body().map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+        Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
     async fn post_json<T, S1, S2>(&self, limit_url: S1, url: S2, data: T) -> Result<(),Error>
@@ -180,7 +186,7 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        await!(self.execute_request(reqwest::Method::POST, limit_url, url, move |builder| builder.json(&data)))?;
+        self.execute_request(hyper::Method::POST, limit_url, url, hyper::Body::from(serde_json::to_string(&data)?)).await?;
         Ok(())
     }
 
@@ -190,32 +196,43 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        let mut res = await!(self.execute_request(reqwest::Method::POST, limit_url, url, move |builder| builder.json(&data)))?;
-        Ok(await!(res.json())?)
+        let res = self.execute_request(hyper::Method::POST, limit_url, url, hyper::Body::from(serde_json::to_string(&data)?)).await?;
+        let bytes = res.into_body().map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+        Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
-    async fn execute_request<F, S1, S2>(&self, method: reqwest::Method, limit_url: S1, url: S2, pre_execute: F) -> Result<reqwest::r#async::Response,Error>
-        where F: Fn(reqwest::r#async::RequestBuilder) -> reqwest::r#async::RequestBuilder + 'static,
-              S1: Into<Option<String>> + 'static,
+    async fn execute_request<S1, S2>(&self, method: hyper::Method, limit_url: S1, url: S2, body: hyper::Body) -> Result<hyper::Response<hyper::Body>,Error>
+        where S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
         let mut retries = 0;
         let url = url.as_ref();
         let limit_url = limit_url.into().unwrap_or_else(|| url.to_owned());
+
+        let body_bytes = body.map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+
         'retry_loop: loop{
-            await!(self.rate_limiter.enforce_limit(&limit_url))?;
+            self.rate_limiter.enforce_limit(&limit_url).await?;
 
             let absolute_url = format!("{base_url}{url}",base_url=API_BASE,url=url);
 
-            let res_builder = self.http_client.request(method.clone(),&absolute_url);
-            let res_builder = self.set_headers(res_builder);
-            let res_builder = pre_execute(res_builder);
+            let mut req_builder = hyper::Request::builder();
+            req_builder
+                .method(method.clone())
+                .uri(&absolute_url);
+            self.set_headers(&mut req_builder);
+            if body_bytes.len() > 0{
+                req_builder.header("Content-Type", "application/json");
+            }
+            let req = req_builder.body(hyper::Body::from(body_bytes.clone()))?;
 
-            let res = await!(res_builder.send())?;
+            eprintln!("request: {:?}",req);
 
-            self.rate_limiter.update_limits(limit_url.clone(),&res);
+            let res = self.http_client.request(req).await?;
 
-            if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS{
+            self.rate_limiter.update_limits(limit_url.clone(),res.headers());
+
+            if res.status() == hyper::StatusCode::TOO_MANY_REQUESTS{
                 if retries >= self.max_retries{
                     return Err(Error::TooManyRetries(self.max_retries,url.to_owned()));
                 }
@@ -223,24 +240,26 @@ impl Client{
                 continue 'retry_loop;
             }
 
-            let res = res.error_for_status()?;
+            if !res.status().is_success(){
+                return Err(Error::UnsuccessfulHttp(res.status()))
+            }
 
             return Ok(res)
         }
     }
 
-    fn set_headers(&self, builder: reqwest::r#async::RequestBuilder) -> reqwest::r#async::RequestBuilder{
+    fn set_headers(&self, builder: &mut http::request::Builder){
         builder
             .header("Authorization", format!("Bot {bot_token}",bot_token=self.bot_token))
-            .header("User-Agent", "discord-next-rs (github.com/Eroc33, 0.0.1-prototype)")
+            .header("User-Agent", "discord-next-rs (github.com/Eroc33, 0.0.1-prototype)");
     }
 
-    pub async fn get_gateway(&self) -> Result<Url,Error>{
+    pub async fn get_gateway(&self, version: u8) -> Result<Url,Error>{
         #[derive(Deserialize)]
         struct GatewayResponse{
             url: String
         }
-        let res: GatewayResponse = await!(self.get_json(None,"/gateway"))?;
-        Ok(Url::parse(format!("{}?v={}&encoding=json",res.url,GATEWAY_VERSION).as_str())?)
+        let res: GatewayResponse = self.get_json(None,"/gateway").await?;
+        Ok(Url::parse(format!("{}?v={}&encoding=json",res.url,version).as_str())?)
     }
 }

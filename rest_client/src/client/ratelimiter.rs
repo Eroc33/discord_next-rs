@@ -35,7 +35,7 @@ impl RateLimitState{
         Duration::from_secs((self.reset_at.timestamp()-Utc::now().timestamp()) as u64)
     }
 
-    pub fn parse(headers: &reqwest::header::HeaderMap) -> Result<Option<Self>,failure::Error>
+    pub fn parse(headers: &hyper::HeaderMap) -> Result<Option<Self>,failure::Error>
     {
         let (limit,remaining,reset_at) = match (headers.get("X-RateLimit-Limit"),headers.get("X-RateLimit-Remaining"),headers.get("X-RateLimit-Reset")){
             (Some(limit),Some(remaining),Some(reset_at)) => (limit,remaining,reset_at),
@@ -92,7 +92,7 @@ impl RateLimiter{
             };
             if let Some(wait) = wait{
                 trace!("Waiting on ratelimit: {:?}",wait);
-                await!(tokio::timer::Delay::new(wait))?;
+                tokio::timer::Delay::new(wait).await;
                 trace!("Rate limit wait complete");
             }
             if self.use_resource(endpoint){
@@ -118,11 +118,10 @@ impl RateLimiter{
         endpoint_allowed&&global_allowed
     }
 
-    pub fn update_limits(&self, endpoint: String, res: &reqwest::r#async::Response){
-        let headers = res.headers();
+    pub fn update_limits(&self, endpoint: String, headers: &hyper::HeaderMap){
         let global = headers.contains_key("X-RateLimit-Global");
 
-        let rate_limit = match RateLimitState::parse(&headers){
+        let rate_limit = match RateLimitState::parse(headers){
             Ok(Some(rate_limit)) => rate_limit,
             Ok(None) => {
                 //nothing to update
