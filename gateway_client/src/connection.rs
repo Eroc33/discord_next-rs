@@ -10,6 +10,8 @@ use futures::{
 };
 use std::marker::PhantomData;
 
+use tracing::*;
+
 use futures_01::stream::Stream as _;
 use futures::compat::*;
 

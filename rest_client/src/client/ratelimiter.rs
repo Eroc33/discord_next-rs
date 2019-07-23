@@ -3,6 +3,8 @@ use std::time::{Duration,Instant};
 use chrono::{DateTime,NaiveDateTime,Utc};
 use std::collections::HashMap;
 
+use tracing::*;
+
 #[derive(Debug)]
 struct RateLimitState{
 	limit: usize,

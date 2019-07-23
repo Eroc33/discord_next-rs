@@ -7,6 +7,8 @@ use url::Url;
 use std::collections::HashMap;
 use futures::stream::TryStreamExt;
 
+use tracing::*;
+
 mod ratelimiter;
 use ratelimiter::*;
 
@@ -226,7 +228,7 @@ impl Client{
             }
             let req = req_builder.body(hyper::Body::from(body_bytes.clone()))?;
 
-            eprintln!("request: {:?}",req);
+            trace!("request: {:?}",req);
 
             let res = self.http_client.request(req).await?;
 

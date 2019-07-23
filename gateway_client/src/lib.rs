@@ -4,8 +4,6 @@ extern crate serde_json;
 #[macro_use]
 extern crate failure;
 extern crate bitflags;
-#[macro_use]
-extern crate log;
 
 pub use discord_next_model as model;
 pub use discord_next_rest as rest_client;

@@ -5,8 +5,6 @@ extern crate serde_derive;
 extern crate serde_json;
 #[macro_use]
 extern crate failure;
-#[macro_use]
-extern crate log;
 
 pub use discord_next_model as model;
 
