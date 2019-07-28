@@ -1,160 +1,171 @@
 
-use futures::prelude::*;
-use crate::Error;
-use crate::model;
-use std::time::{Duration,Instant};
-use std::pin::Pin;
-use std::task::{Poll,Context};
-use futures::{
-    sink::{Sink},
+use std::{
+    time::{Duration,Instant},
+    pin::Pin,
+    convert::{TryFrom,TryInto},
 };
-use std::marker::PhantomData;
-
+#[cfg(feature="voice")]
+use std::collections::HashMap;
+use futures::{
+    prelude::*,
+    sink::{Sink},
+    stream,
+    compat::*,
+};
+use crate::{
+    extensions::*,
+    close_on_drop::CloseOnDrop,
+    Error,
+    model,
+};
 use tracing::*;
-
 use futures_01::stream::Stream as _;
-use futures::compat::*;
 
-pub struct CloseOnDrop<S: Sink<I> + Unpin,I>(S,PhantomData<I>);
-
-impl<S,I> CloseOnDrop<S,I>
-    where S: Sink<I> + Unpin,
-{
-    pub fn new(s: S) -> Self{
-        Self(s,PhantomData)
-    }
+pub struct VoiceInfo{
+    pub token: String,
+    pub endpoint: String,
 }
 
-impl<S,I> Sink<I> for CloseOnDrop<S,I>
-    where S: Sink<I> + Unpin
-{
-    type Error = S::Error;
-    fn start_send(self: Pin<&mut Self>, item: I) -> Result<(), Self::Error>{
-        Sink::start_send(unsafe{self.map_unchecked_mut(|s| &mut s.0)}, item)
-    }
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>>{
-        Sink::poll_ready(unsafe{self.map_unchecked_mut(|s| &mut s.0)}, cx)
-    }
-    fn poll_flush(
-        self: Pin<&mut Self>, 
-        cx: &mut Context
-    ) -> Poll<Result<(), Self::Error>>{
-        Sink::poll_flush(unsafe{self.map_unchecked_mut(|s| &mut s.0)}, cx)
-    }
-    fn poll_close(
-        self: Pin<&mut Self>, 
-        cx: &mut Context
-    ) -> Poll<Result<(), Self::Error>>{
-        Sink::poll_close(unsafe{self.map_unchecked_mut(|s| &mut s.0)}, cx)
-    }
+pub (crate) struct ConnectionWriter{
+    pub sink: futures::channel::mpsc::UnboundedSender<model::GatewayCommand>,
 }
-
-pub struct ConnectionRecvPart{
-    stream: Pin<Box<dyn Stream<Item=Result<model::GatewayEvent,Error>> + Send + 'static>>,
-    heartbeat_timer: tokio::timer::Interval,
-}
-
-pub struct ConnectionSendPart{
-    sink: CloseOnDrop<Box<dyn Sink<model::GatewayCommand,Error=Error> + Send + Unpin + 'static>,model::GatewayCommand>,
-    token: String,
-}
-
 
 pub struct Connection{
-    recv: ConnectionRecvPart,
-    send: ConnectionSendPart,
-}
-
-impl<I,S> Drop for CloseOnDrop<S,I>
-    where S: Sink<I> + Unpin
-{
-    fn drop(&mut self){
-        //we ignore this since we can't do anything about it if it fails, and we're only sending the close signal to be courteous
-        let _ = self.0.close();
-    }
-}
-
-///Indicates that you must send a heartbeat
-pub struct SendHeartBeat;
-
-impl ConnectionRecvPart{
-    pub fn event_stream(self) -> impl Stream<Item=Result<futures::future::Either<SendHeartBeat,model::ReceivableEvent>,Error>>
-    {
-        use futures::{future::Either,stream::StreamExt};
-        let ConnectionRecvPart{heartbeat_timer, stream} = self;
-        futures::stream::select(heartbeat_timer.map(Either::Left),futures::StreamExt::map(stream,Either::Right))
-            .filter_map(|heartbeat_or_event|{
-                futures::future::ready(
-                match heartbeat_or_event{
-                    Either::Left(_heartbeat) => {
-                        Some(Ok(Either::Left(SendHeartBeat)))
-                    }
-                    Either::Right(Ok(payload)) => {
-                        trace!("got payload: {:?}",payload);
-                        match payload{
-                            model::GatewayEvent::HeartbeatAck => {
-                                //don't really care
-                                None
-                            }
-                            model::GatewayEvent::HeartbeatRequest => {
-                                Some(Ok(Either::Left(SendHeartBeat)))
-                            }
-                            model::GatewayEvent::Hello(hello) => {
-                                warn!("unexpected hello payload: {:?}",hello);
-                                //most resilient thing to do here is just continue probably
-                                None
-                            }
-                            model::GatewayEvent::ReceivableEvent(event) => {
-                                Some(Ok(Either::Right(event)))
-                            }
-                            model::GatewayEvent::Reconnect => {
-                                todo!("implement gateway reconnect")
-                            }
-                            model::GatewayEvent::InvalidSession(_) => {
-                                todo!("implement gateway reconnect")
-                            }
-                        }
-                    },
-                    Either::Right(Err(e)) => {
-                        Some(Err(e))
-                    }
-                }
-                )
-            })
-    }
+    pub session_id: String,
+    stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + 'static>>>,
+    heartbeat_timer: stream::Fuse<tokio::timer::Interval>,
+    sink: futures::channel::mpsc::UnboundedSender<model::GatewayCommand>,
+    token: String,
+    seq_num: Option<u64>,
+    #[cfg(feature="voice")]
+    voice_update_channels: HashMap<model::GuildId,futures::channel::mpsc::UnboundedSender<VoiceInfo>>,
+    pub user: model::User,
 }
 
 impl Connection{
-    pub async fn run<E,F,Fut>(self, mut f: F) -> Result<(),E>
-        where F: FnMut(model::ReceivableEvent,crate::rest_client::Client) -> Fut,
+    pub (crate) fn clone_writer(&self) -> ConnectionWriter
+    {
+        ConnectionWriter{
+            sink: self.sink.clone()
+        }
+    }
+
+    fn update_seq_num(&mut self, new_seq_num: Option<u64>){
+        //TODO: should we only count upwards?
+        self.seq_num = new_seq_num;
+    }
+
+    #[cfg(feature="voice")]
+    pub (crate) fn voice_server_updates_for(&mut self, guild_id: model::GuildId) -> futures::channel::mpsc::UnboundedReceiver<VoiceInfo>{
+        let (tx,rx) = futures::channel::mpsc::unbounded();
+        self.voice_update_channels.insert(guild_id, tx);
+        rx
+    }
+
+    #[cfg(feature="voice")]
+    async fn update_voice_info(&mut self, voice_server_update: model::VoiceServerUpdate) -> Result<(),Error>{
+        if let Some(channel) = self.voice_update_channels.get_mut(&voice_server_update.guild_id){
+            channel.send(VoiceInfo{
+                endpoint: voice_server_update.endpoint,
+                token: voice_server_update.token,
+            }).await?;
+        }else{
+            trace!("Unused voice server update");
+        }
+        Ok(())
+        //TODO: send this to the appropriate VoiceConnection via a channel?
+    }
+
+    async fn handle_dispatch<E,F,Fut>(&mut self, event: model::ReceivableEvent, client: &crate::rest_client::Client, f: &mut F) -> Result<(),Error>
+        where F: FnMut(&mut Self, model::ReceivableEvent,crate::rest_client::Client) -> Fut,
             Fut: std::future::Future<Output = Result<(),E>> + Send + 'static,
             E: std::fmt::Debug + From<Error>
     {
-        use futures::future::Either;
-
-        let Connection{send: ConnectionSendPart{mut sink,token},recv} = self;
-
-        let client = crate::rest_client::Client::new(token);
-
-        let mut event_stream = recv.event_stream();
-        while let Some(res) = event_stream.next().await{
-            match res?{
-                Either::Left(_send_heatbeat) => {
-                    debug!("sending heartbeat");
-                    //TODO: store & send sequence numbers
-                    sink.send(crate::model::Heartbeat{last_seq: None}.into()).await?;
-                }
-                Either::Right(event) => {
-                    let fut = f(event,client.clone());
-                    tokio::spawn(async{
-                        if let Err(ref e) = fut.await{
-                            //warn on errors, but expect them to be recoverable, so don't abort
-                            warn!("event handler error {:?}",e)
-                        }
-                    });
-                }
+        match event{
+            #[cfg(feature="voice")]
+            model::ReceivableEvent::VoiceServerUpdate(voice_server_update) => {
+                self.update_voice_info(voice_server_update).await?;
+            },
+            other => {
+                let fut = f(self, other,client.clone());
+                tokio::spawn(async{
+                    if let Err(ref e) = fut.await{
+                        //warn on errors, but expect them to be recoverable, so don't abort
+                        warn!("event handler error {:?}",e)
+                    }
+                });
             }
         }
+        Ok(())
+    }
+
+    ///returns true if complete
+    pub async fn turn<E,F,Fut>(&mut self, client: &crate::rest_client::Client, f: &mut F) -> Result<bool,Error>
+        where F: FnMut(&mut Self, model::ReceivableEvent,crate::rest_client::Client) -> Fut,
+            Fut: std::future::Future<Output = Result<(),E>> + Send + 'static,
+            E: std::fmt::Debug + From<Error>
+    {
+        use futures::select;
+
+        select!{
+            _beat = self.heartbeat_timer.next() => {
+                self.sink.send(crate::model::Heartbeat{last_seq: None}.into()).await?;
+                return Ok(false);
+            },
+            payload = self.stream.next() => {
+                let payload = match payload{
+                    None => return Ok(false),
+                    Some(Err(e)) => return Err(e),
+                    Some(Ok(payload)) => payload,
+                };
+                self.update_seq_num(payload.s);
+                let gateway_event: model::GatewayEvent = match payload.try_into(){
+                    Ok(o) => o,
+                    Err(model::FromPayloadError::UnknownOpcode(op)) => {
+                        warn!("Unknown voice opcode {}", op);
+                        return Ok(false);
+                    },
+                    Err(other) => {
+                        return Err(other.into());
+                    }
+                };
+                trace!("got gateway_event: {:?}",gateway_event);
+                match gateway_event{
+                    model::GatewayEvent::HeartbeatAck => {
+                        //don't really care
+                    }
+                    model::GatewayEvent::HeartbeatRequest => {
+                        self.sink.send(crate::model::Heartbeat{last_seq: None}.into()).await?;
+                    }
+                    model::GatewayEvent::Hello(hello) => {
+                        warn!("unexpected hello payload: {:?}",hello);
+                        //most resilient thing to do here is just continue probably
+                    }
+                    model::GatewayEvent::ReceivableEvent(event) => {
+                        self.handle_dispatch(event,client,f).await?;
+                    }
+                    model::GatewayEvent::Reconnect => {
+                        todo!("implement gateway reconnect")
+                    }
+                    model::GatewayEvent::InvalidSession(_) => {
+                        todo!("implement gateway invalid session")
+                    }
+                }
+                return Ok(false);
+            },
+            complete => return Ok(true),
+            default => return Ok(false),
+        }
+    }
+
+    //runs Connection::turn to completion
+    pub async fn run<E,F,Fut>(mut self, mut f: F) -> Result<(),Error>
+        where F: FnMut(&mut Self, model::ReceivableEvent,crate::rest_client::Client) -> Fut,
+            Fut: std::future::Future<Output = Result<(),E>> + Send + 'static,
+            E: std::fmt::Debug + From<Error>
+    {
+        let client = crate::rest_client::Client::new(self.token.clone());
+        while !self.turn(&client, &mut f).await?{}
         Ok(())
     }
 
@@ -165,7 +176,7 @@ impl Connection{
         let (stream,_res) = tokio_tungstenite::connect_async(url).compat().await?;
         let (sink,stream) = stream.split();
         let (sink,stream) = (sink.sink_compat(),stream.compat());
-        let mut sink: Box<dyn Sink<_,Error=_>+Send+Unpin> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::GatewayCommand|{
+        let mut sink: Box<dyn Sink<model::GatewayCommand,Error=Error>+Send+Unpin> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::GatewayCommand|{
             future::lazy(|_|{
                 let payload = model::Payload::try_from_command(payload)?;
                 let payload = serde_json::to_string(&payload)?;
@@ -175,18 +186,20 @@ impl Connection{
         }));
         let mut stream = Box::pin(stream.map_err(Error::from).and_then(|message|{
             future::lazy(|_|{
+                if let tungstenite::Message::Close(close_frame) = message {
+                    return Err(Error::ConnectionClosed(close_frame.and_then(|frame| model::CloseCode::try_from(Into::<u16>::into(frame.code)).ok())));
+                }
                 let text = message.into_text()?;
                 trace!("Parsing: {}",&text);
                 let payload: model::Payload = serde_json::from_str(text.as_str())?;
-                //TODO: do something with sequence number here
-                Ok(payload.received_event_data()?)
+                Ok(payload)
             })
         }));
 
-        let payload = stream.try_next().await?;
+        let event: model::GatewayEvent = stream.try_next().await?.unwrap().try_into()?;
 
-        debug!("packet, should be hello: {:#?}",payload);
-        let hello = payload.unwrap().expect_hello();
+        debug!("packet, should be hello: {:#?}",event);
+        let hello = event.expect_hello();
         let heartbeat_interval = hello.heartbeat_interval;
         trace!("{:#?}",hello);
         let identify = model::Identify::new(token.clone());
@@ -196,19 +209,22 @@ impl Connection{
 
         let sink = CloseOnDrop::new(sink);
 
-        let payload = stream.try_next().await?;
+        let event: model::GatewayEvent = stream.try_next().await?.unwrap().try_into()?;
 
-        debug!("packet, should be event ready: {:?}",payload);
-        let ready = payload.unwrap().expect_event().expect_ready();
+        debug!("packet, should be event ready: {:?}",event);
+        let ready = event.expect_event().expect_ready();
         trace!("{:#?}",ready);
 
         Ok(Self{
-            send: ConnectionSendPart{
-                sink,token
-            },
-            recv: ConnectionRecvPart{
-                stream,heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval))
-            }
+            session_id: ready.session_id,
+            sink: sink.unbounded_channeled(),
+            token,
+            user: ready.user,
+            stream: (stream as Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + 'static>>).fuse(),
+            heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval)).fuse(),
+            seq_num: None,
+            #[cfg(feature="voice")]
+            voice_update_channels: Default::default(),
         })
     }
 }

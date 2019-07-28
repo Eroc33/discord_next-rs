@@ -1,40 +1,9 @@
 use super::*;
+use crate::Payload;
 
 use serde::{Deserialize,Serialize};
 use log::warn;
-
-#[derive(Debug,Deserialize,Serialize)]
-pub struct Payload{
-    //opcode for the payload
-    op: u64,
-    //event data
-    d: serde_json::Value,
-    //sequence number, used for resuming sessions and heartbeats (Only for Opcode 0)
-    s: Option<u64>,
-    //the event name for this payload (Only for Opcode 0)	
-    t: Option<String>,
-}
-
-impl Payload{
-    pub fn received_event_data(self) -> Result<GatewayEvent,serde_json::Error>{
-        Ok(match self.op{
-            0  => ReceivableEvent::from_payload(self)?.into(),
-            1  => GatewayEvent::HeartbeatRequest,
-            //TODO: just ignore send only ops rather than panic?
-            2  => panic!("Should never recieve identify payloads"),
-            3  => panic!("Should never recieve status update payloads"),
-            4  => panic!("Should never recieve voice update payloads"),
-            5  => panic!("Should never recieve voice ping payloads"),
-            6  => panic!("Should never recieve ping payloads"),
-            7  => GatewayEvent::Reconnect,
-            8  => panic!("Should never recieve request guild members payloads"),
-            9  => GatewayEvent::InvalidSession(InvalidSession{resumable: serde_json::from_value(self.d)?}),
-            10 => serde_json::from_value::<Hello>(self.d)?.into(),
-            11 => GatewayEvent::HeartbeatAck,
-            other => unimplemented!("Unknown op {}",other),
-        })
-    }
-}
+use std::convert::TryFrom;
 
 impl Payload{
     pub fn try_from_command<P: Into<GatewayCommand>>(payload: P) -> Result<Self,serde_json::Error>{
@@ -59,6 +28,7 @@ impl Payload{
     }
 }
 
+#[macro_export]
 macro_rules! wrapping_from {
     ($wrapper: tt, $wrapped: tt, $expect_fn: ident) => {
         impl From<$wrapped> for $wrapper{
@@ -71,7 +41,7 @@ macro_rules! wrapping_from {
             pub fn $expect_fn(self) -> $wrapped{
                 match self{
                     $wrapper::$wrapped(inner) => inner,
-                    _ => panic!("$wrapper was not a $wrapped"),
+                    other => panic!("{:?} was not a {}",other,stringify!($wrapped)),
                 }
             }
         }
@@ -89,16 +59,24 @@ pub enum GatewayCommand{
     RequestGuildMembers(RequestGuildMembers),
 }
 
+wrapping_from!(GatewayCommand,Heartbeat,expect_heartbeat);
+wrapping_from!(GatewayCommand,Identify,expect_identify);
+wrapping_from!(GatewayCommand,StatusUpdate,expect_status_update);
+wrapping_from!(GatewayCommand,VoiceStateUpdate,expect_voice_state_update);
+wrapping_from!(GatewayCommand,Resume,expect_resume);
+wrapping_from!(GatewayCommand,RequestGuildMembers,expect_request_guild_members);
+
+#[cfg(feature="voice")]
 #[derive(Debug,Serialize)]
 pub struct VoiceStateUpdate{
     //id of the guild
-    guild_id: Snowflake,
+    pub guild_id: GuildId,
     //id of the voice channel client wants to join (null if disconnecting)
-    channel_id: Option<Snowflake>,
+    pub channel_id: Option<ChannelId>,
     //is the client muted
-    self_mute: bool,
+    pub self_mute: bool,
     //is the client deafened
-    self_deaf: bool,
+    pub self_deaf: bool,
 }
 
 #[derive(Debug,Serialize)]
@@ -116,7 +94,7 @@ pub struct StatusUpdate{
 #[derive(Debug,Serialize)]
 pub struct RequestGuildMembers{
     //id of the guild(s) to get members for
-    guild_id: Vec<Snowflake>,
+    guild_id: Vec<GuildId>,
     //string that username starts with, or an empty string to return all members
     query: String,
     //maximum number of members to send or 0 to request all members matched
@@ -132,9 +110,6 @@ pub struct Resume{
     seq: u64,
 }
 
-wrapping_from!(GatewayCommand,Identify,expect_identify);
-wrapping_from!(GatewayCommand,Heartbeat,expect_heartbeat);
-
 #[derive(Debug)]
 pub enum GatewayEvent{
     Hello(Hello),
@@ -144,6 +119,29 @@ pub enum GatewayEvent{
     //indicates the client should reconnect
     Reconnect,
     InvalidSession(InvalidSession),
+}
+
+impl TryFrom<Payload> for GatewayEvent{
+    type Error = crate::payload::FromPayloadError;
+    fn try_from(payload: Payload) -> Result<Self, Self::Error>
+    {
+        Ok(match payload.op{
+            0  => ReceivableEvent::from_payload(payload)?.into(),
+            1  => GatewayEvent::HeartbeatRequest,
+            //TODO: just ignore send only ops rather than panic?
+            2  => panic!("Should never recieve identify payloads"),
+            3  => panic!("Should never recieve status update payloads"),
+            4  => panic!("Should never recieve voice update payloads"),
+            5  => panic!("Should never recieve voice ping payloads"),
+            6  => panic!("Should never recieve ping payloads"),
+            7  => GatewayEvent::Reconnect,
+            8  => panic!("Should never recieve request guild members payloads"),
+            9  => GatewayEvent::InvalidSession(InvalidSession{resumable: serde_json::from_value(payload.d)?}),
+            10 => serde_json::from_value::<Hello>(payload.d)?.into(),
+            11 => GatewayEvent::HeartbeatAck,
+            other => Err(crate::payload::FromPayloadError::UnknownOpcode(other))?,
+        })
+    }
 }
 
 wrapping_from!(GatewayEvent,Hello,expect_hello);
@@ -595,4 +593,52 @@ pub struct WebhooksUpdate
     pub guild_id: GuildId,
     ///id of the channel
     pub channel_id: ChannelId,
+}
+
+#[derive(Debug)]
+pub enum CloseCode{
+    ///We're not sure what went wrong. Try reconnecting?
+    UnknownError,
+    ///You sent an invalid Gateway opcode or an invalid payload for an opcode. Don't do that!
+	UnknownOpcode,
+    ///You sent an invalid payload to us. Don't do that!
+	DecodeError,
+    ///You sent us a payload prior to identifying.
+	NotAuthenticated,
+    ///The account token sent with your identify payload is incorrect.
+	AuthenticationFailed,
+    ///You sent more than one identify payload. Don't do that!
+	AlreadyAuthenticated,
+    ///The sequence sent when resuming the session was invalid. Reconnect and start a new session.
+	InvalidSeq,
+    ///Woah nelly! You're sending payloads to us too quickly. Slow it down!
+	RateLimited,
+    ///Your session timed out. Reconnect and start a new one.
+	SessionTimeout,
+    ///You sent us an invalid shard when identifying.
+	InvalidShard,
+    ///The session would have handled too many guilds - you are required to shard your connection in order to connect.
+	ShardingRequired,
+}
+
+impl TryFrom<u16> for CloseCode{
+    type Error = ();
+    fn try_from(close_code: u16) -> Result<Self, Self::Error>
+    {
+        Ok(match close_code{
+            4000 => CloseCode::UnknownError,
+            4001 => CloseCode::UnknownOpcode,
+            4002 => CloseCode::DecodeError,
+            4003 => CloseCode::NotAuthenticated,
+            4004 => CloseCode::AuthenticationFailed,
+            4005 => CloseCode::AlreadyAuthenticated,
+            //4006 is not documented
+            4007 => CloseCode::InvalidSeq,
+            4008 => CloseCode::RateLimited,
+            4009 => CloseCode::SessionTimeout,
+            4010 => CloseCode::InvalidShard,
+            4011 => CloseCode::ShardingRequired,
+            _else => return Err(()),
+        })
+    }
 }

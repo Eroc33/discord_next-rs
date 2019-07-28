@@ -4,10 +4,14 @@ use serde_json;
 use serde::{Deserialize,Serialize};
 use bitflags::bitflags;
 
+mod payload;
+pub use payload::*;
 mod ids;
 pub use ids::*;
-mod gateway_events;
-pub use gateway_events::*;
+#[macro_use]
+mod gateway;
+pub use gateway::*;
+pub mod voice;
 mod embed;
 pub use embed::*;
 #[macro_use]

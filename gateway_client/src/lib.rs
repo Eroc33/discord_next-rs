@@ -1,4 +1,5 @@
-#![feature(generators,await_macro, async_await, todo_macro)]
+#![recursion_limit="512"]
+#![feature(generators,await_macro, async_await, todo_macro, checked_duration_since)]
 extern crate tokio;
 extern crate serde_json;
 #[macro_use]
@@ -8,6 +9,10 @@ extern crate bitflags;
 pub use discord_next_model as model;
 pub use discord_next_rest as rest_client;
 
+mod close_on_drop;
+mod extensions;
+#[cfg(feature="voice")]
+pub mod voice;
 mod connection;
 pub use connection::*;
 
@@ -25,6 +30,17 @@ pub enum Error {
     HeartbeatTimer(#[cause] tokio::timer::Error),
     #[fail(display = "An error with a rest operation: {}",_0)]
     RestError(#[cause] discord_next_rest::Error),
+    #[fail(display = "Gateway connection closed: {:?}",_0)]
+    ConnectionClosed(Option<model::CloseCode>),
+    #[cfg(feature="voice")]
+    #[fail(display = "Voice connection closed: {:?}",_0)]
+    VoiceConnectionClosed(Option<model::voice::CloseCode>),
+    #[fail(display = "Couldn't send on gateway connection. It is most likely closed: {:?}",_0)]
+    SendError(#[cause] futures::channel::mpsc::SendError),
+    #[fail(display = "IO error: {:?}",_0)]
+    Io(#[cause] std::io::Error),
+    #[fail(display = "FromPayloadError: {:?}",_0)]
+    FromPayload(#[cause] model::FromPayloadError),
 }
 
 impl Error{
@@ -33,6 +49,24 @@ impl Error{
             Error::Ws(_) | Error::HeartbeatTimer(_) => false,
             _other => true,
         }
+    }
+}
+
+impl From<model::FromPayloadError> for Error{
+    fn from(e: model::FromPayloadError) -> Self{
+        Error::FromPayload(e)
+    }
+}
+
+impl From<std::io::Error> for Error{
+    fn from(e: std::io::Error) -> Self{
+        Error::Io(e)
+    }
+}
+
+impl From<futures::channel::mpsc::SendError> for Error{
+    fn from(e: futures::channel::mpsc::SendError) -> Self{
+        Error::SendError(e)
     }
 }
 

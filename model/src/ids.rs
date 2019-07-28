@@ -1,6 +1,6 @@
 use serde::{de,Deserialize,Serialize};
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct Snowflake(
     #[serde(deserialize_with="u64_from_string")]
@@ -35,22 +35,22 @@ where
     deserializer.deserialize_str(V)
 }
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct ChannelId(pub Snowflake);
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct RoleId(pub Snowflake);
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct GuildId(pub Snowflake);
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct MessageId(pub Snowflake);
 
-#[derive(Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
+#[derive(Hash,Debug,Deserialize,Serialize,PartialEq,Eq,Clone,Copy)]
 #[serde(transparent)]
 pub struct UserId(pub Snowflake);
