@@ -169,7 +169,7 @@ impl ConnectionAudioRunner{
                 }else{
                     self.silent_frames = 0;
                     trace!("opus encoding size {} frame", audio_frame_size);
-                    self.audio_encoder.encode(&audio_buf[..],&mut body[..extent]).expect("FIXME")
+                    self.audio_encoder.encode(&audio_buf[..],&mut body[..extent])?;
                 };
 
                 let encrypted = secretbox::seal(&body[..audio_len], &nonce, &self.secret_key);
@@ -448,11 +448,15 @@ impl Connection{
         let (tx,rx) = oneshot::channel();
 
         tokio::spawn(ws_runner.run(rx).map(|res|{
-            res.expect("FIXME");
+            if let Err(e) = res{
+                error!("Error: {:?}",e);
+            }
         }).instrument(span!(Level::INFO, "ws_runner")));
 
         audio_runner.run(audio_stream,tx).map(|res|{
-            res.expect("FIXME");
+            if let Err(e) = res{
+                error!("Error: {:?}",e);
+            }
         }).instrument(span!(Level::INFO, "audio_runner")).await;
     }
 }

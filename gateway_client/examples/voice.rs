@@ -69,8 +69,8 @@ async fn main(){
                         let voice_conn_fut = voice_connector.connect(vars.voice_guild_id, Some(vars.voice_channel_id));
 
                         tokio::spawn(async move{
-                            let voice_conn = voice_conn_fut.await.expect("FIXME");
-                            voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg").expect("FIXME")).await;
+                            let voice_conn = voice_conn_fut.await.unwrap();
+                            voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg").unwrap()).await;
                             println!("Voice conn completed");
                         });
                     }
