@@ -94,7 +94,6 @@ impl From<serde_json::Error> for Error{
     }
 }
 
-#[cfg(feature="connection")]
 impl From<tokio::timer::Error> for Error{
     fn from(e: tokio::timer::Error) -> Self{
         Error::HeartbeatTimer(e)

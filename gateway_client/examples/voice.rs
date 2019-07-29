@@ -8,6 +8,8 @@ extern crate serde_derive;
 
 use tracing_fmt;
 
+use std::sync::Arc;
+
 #[derive(Deserialize, Debug)]
 struct EnvVars{
     #[serde(rename="discord_bot_token")]
@@ -25,26 +27,27 @@ impl Default for TestAudioStream{
 }
 
 impl discord_next::voice::AudioStream for TestAudioStream{
-    fn read_frame(&mut self, buffer: &mut [i16]){
+    fn read_frame(&mut self, buffer: &mut [i16]) -> Result<usize,std::io::Error>{
         for i in 0..buffer.len(){
             buffer[i] = ((i16::max_value() as f32) * 0.75 * (((i as f32)/((buffer.len() - 1) as f32))*2.0*std::f32::consts::PI).sin()) as i16;
         }
+        Ok(buffer.len())
     }
 }
 
-const ACTIVATOR: &str = "!echo";
+const ACTIVATOR: &str = "!clip";
 
 #[tokio::main]
 async fn main(){
     dotenv::dotenv().ok();
     
-    let vars = envy::from_env::<EnvVars>().unwrap();
+    let vars = Arc::new(envy::from_env::<EnvVars>().unwrap());
 
     let subscriber = tracing_fmt::FmtSubscriber::builder().finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
     let conn = discord_next::Connection::connect(vars.bot_token.clone()).await;
-    let mut conn = match conn{
+    let conn = match conn{
         Ok(conn) => {
             println!("conn built");
             conn
@@ -55,25 +58,27 @@ async fn main(){
         }
     };
 
-    let voice_conn_fut = discord_next::voice::Connection::connect(&mut conn, vars.voice_guild_id, Some(vars.voice_channel_id));
+    let res: Result<(),discord_next::Error> = conn.run(move |conn, event, client|{
+        let voice_connector = discord_next::voice::VoiceConnector::from(conn);
+        let vars = vars.clone();
+        async move{
+            println!("event: {:?}:", event);
+            match event{
+                discord_next::model::ReceivableEvent::MessageCreate(msg) => {
+                    if msg.content.starts_with(ACTIVATOR) {
+                        let voice_conn_fut = voice_connector.connect(vars.voice_guild_id, Some(vars.voice_channel_id));
 
-    tokio::spawn(async move{
-        let voice_conn = voice_conn_fut.await.expect("FIXME");
-        voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg").expect("FIXME")).await;
-    });
-
-    let res: Result<(),discord_next::Error> = conn.run(async move |_conn, event, client|{
-        println!("event: {:?}:", event);
-        match event{
-            discord_next::model::ReceivableEvent::MessageCreate(msg) => {
-                if msg.content.starts_with(ACTIVATOR) {
-                    let cmd: String = msg.content[ACTIVATOR.len()..].trim().to_owned();
-                    client.send_message(msg.channel_id,discord_next::rest_client::NewMessage::text(cmd)).await?;
+                        tokio::spawn(async move{
+                            let voice_conn = voice_conn_fut.await.expect("FIXME");
+                            voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg").expect("FIXME")).await;
+                            println!("Voice conn completed");
+                        });
+                    }
                 }
+                _other => {}
             }
-            _other => {}
+            Result::<(),discord_next::Error>::Ok(())
         }
-        Result::<(),discord_next::Error>::Ok(())
     }).await;
     println!("Bot closed, res: {:?}",res);
 }

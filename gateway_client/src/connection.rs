@@ -11,6 +11,7 @@ use futures::{
     sink::{Sink},
     stream,
     compat::*,
+    channel::mpsc::{UnboundedSender,UnboundedReceiver},
 };
 use crate::{
     extensions::*,
@@ -26,19 +27,20 @@ pub struct VoiceInfo{
     pub endpoint: String,
 }
 
+#[derive(Clone)]
 pub (crate) struct ConnectionWriter{
-    pub sink: futures::channel::mpsc::UnboundedSender<model::GatewayCommand>,
+    pub sink: UnboundedSender<model::GatewayCommand>,
 }
 
 pub struct Connection{
     pub session_id: String,
     stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + 'static>>>,
     heartbeat_timer: stream::Fuse<tokio::timer::Interval>,
-    sink: futures::channel::mpsc::UnboundedSender<model::GatewayCommand>,
+    sink: UnboundedSender<model::GatewayCommand>,
     token: String,
     seq_num: Option<u64>,
     #[cfg(feature="voice")]
-    voice_update_channels: HashMap<model::GuildId,futures::channel::mpsc::UnboundedSender<VoiceInfo>>,
+    voice_update_store: VoiceStateStore,
     pub user: model::User,
 }
 
@@ -56,24 +58,16 @@ impl Connection{
     }
 
     #[cfg(feature="voice")]
-    pub (crate) fn voice_server_updates_for(&mut self, guild_id: model::GuildId) -> futures::channel::mpsc::UnboundedReceiver<VoiceInfo>{
-        let (tx,rx) = futures::channel::mpsc::unbounded();
-        self.voice_update_channels.insert(guild_id, tx);
-        rx
+    pub (crate) fn voice_update_store(&self) -> &VoiceStateStore{
+        &self.voice_update_store
     }
-
+    
     #[cfg(feature="voice")]
-    async fn update_voice_info(&mut self, voice_server_update: model::VoiceServerUpdate) -> Result<(),Error>{
-        if let Some(channel) = self.voice_update_channels.get_mut(&voice_server_update.guild_id){
-            channel.send(VoiceInfo{
-                endpoint: voice_server_update.endpoint,
-                token: voice_server_update.token,
-            }).await?;
-        }else{
-            trace!("Unused voice server update");
-        }
-        Ok(())
-        //TODO: send this to the appropriate VoiceConnection via a channel?
+    async fn update_voice_info(&mut self, voice_server_update: model::VoiceServerUpdate) -> Result<(),VoiceStateUpdateError>{
+        self.voice_update_store.send_event(&voice_server_update.guild_id,VoiceInfo{
+            endpoint: voice_server_update.endpoint,
+            token: voice_server_update.token,
+        }).await
     }
 
     async fn handle_dispatch<E,F,Fut>(&mut self, event: model::ReceivableEvent, client: &crate::rest_client::Client, f: &mut F) -> Result<(),Error>
@@ -84,7 +78,12 @@ impl Connection{
         match event{
             #[cfg(feature="voice")]
             model::ReceivableEvent::VoiceServerUpdate(voice_server_update) => {
-                self.update_voice_info(voice_server_update).await?;
+                match self.update_voice_info(voice_server_update).await{
+                    Ok(_) => {},
+                    Err(_e) => {
+                        warn!("Send error when updating voice state.")
+                    }
+                }
             },
             other => {
                 let fut = f(self, other,client.clone());
@@ -224,7 +223,85 @@ impl Connection{
             heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval)).fuse(),
             seq_num: None,
             #[cfg(feature="voice")]
-            voice_update_channels: Default::default(),
+            voice_update_store: Default::default(),
         })
+    }
+}
+
+pub type VoiceStateStore = EventRouter<model::GuildId,VoiceInfo>;
+
+use std::sync::Arc;
+use futures::lock::Mutex;
+use std::hash::Hash;
+
+pub struct VoiceStateUpdateError;
+
+struct EventRouterInner<K: Eq + Hash,V>{
+    routes: Mutex<HashMap<K,UnboundedSender<V>>>,
+}
+
+//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Default for EventRouterInner<K,V>{
+    fn default() -> Self{
+        Self{
+            routes: Mutex::new(Default::default())
+        }
+    }
+}
+
+impl<K,V> EventRouterInner<K,V>
+    where K: Eq + Hash + std::fmt::Debug
+{
+    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
+        loop{
+            if let Some(mut locked) = self.routes.try_lock(){
+                let (tx,rx) = futures::channel::mpsc::unbounded();
+                locked.insert(key,tx);
+                return rx;
+            }
+        }
+    }
+    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
+        if let Some(mut chan) = self.routes.lock().await.get(key){
+            info!("Voice update for {:?}",key);
+            //TODO: remove channels where send fails? (definitely want to do this if the failure is due to disconnection)
+            chan.send(event).await.map_err(|_| VoiceStateUpdateError)?;
+        }else{
+            info!("Unrouted event");
+        }
+        Ok(())
+    }
+}
+
+pub struct EventRouter<K: Eq + Hash,V>{
+    inner: Arc<EventRouterInner<K,V>>,
+}
+
+//#[derive(Clone)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Clone for EventRouter<K,V>{
+    fn clone(&self) -> Self{
+        Self{
+            inner: self.inner.clone()
+        }
+    }
+}
+
+//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Default for EventRouter<K,V>{
+    fn default() -> Self{
+        Self{
+            inner: Arc::new(Default::default())
+        }
+    }
+}
+
+impl<K,V> EventRouter<K,V>
+    where K: Eq + Hash + std::fmt::Debug
+{
+    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
+        self.inner.register(key)
+    }
+    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
+        self.inner.send_event(key,event).await
     }
 }

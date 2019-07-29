@@ -5,19 +5,68 @@ use serde::{Deserialize,Serialize};
 use log::warn;
 use std::convert::TryFrom;
 
+pub mod opcode{
+    pub const DISPATCH: u64 = 0;
+    pub const HEARTBEAT: u64 = 1;
+    pub const IDENTIFY: u64 = 2;
+    pub const STATUS_UPDATE: u64 = 3;
+    pub const VOICE_STATE_UPDATE: u64 = 4;
+    //5 is not documented
+    pub const RESUME: u64 = 6;
+    pub const RECONNECT: u64 = 7;
+    pub const REQUEST_GUILD_MEMBERS: u64 = 8;
+    pub const INVALID_SESSION: u64 = 9;
+    pub const HELLO: u64 = 10;
+    pub const HEARTBEAT_ACK: u64 = 11;
+}
+
+pub fn opcode_name(opcode: u64) -> &'static str{
+    match opcode{
+        opcode::DISPATCH => "DISPATCH",
+        opcode::HEARTBEAT => "HEARTBEAT",
+        opcode::IDENTIFY => "IDENTIFY",
+        opcode::STATUS_UPDATE => "STATUS_UPDATE",
+        opcode::VOICE_STATE_UPDATE => "VOICE_STATE_UPDATE",
+        opcode::RESUME => "RESUME",
+        opcode::RECONNECT => "RECONNECT",
+        opcode::REQUEST_GUILD_MEMBERS => "REQUEST_GUILD_MEMBERS",
+        opcode::INVALID_SESSION => "INVALID_SESSION",
+        opcode::HELLO => "HELLO",
+        opcode::HEARTBEAT_ACK => "HEARTBEAT_ACK",
+        _other=> "unknown",
+    }
+}
+
+pub fn known_opcode(opcode: u64) -> bool{
+    match opcode{
+        opcode::DISPATCH |
+        opcode::HEARTBEAT |
+        opcode::IDENTIFY |
+        opcode::STATUS_UPDATE |
+        opcode::VOICE_STATE_UPDATE |
+        opcode::RESUME |
+        opcode::RECONNECT |
+        opcode::REQUEST_GUILD_MEMBERS |
+        opcode::INVALID_SESSION |
+        opcode::HELLO |
+        opcode::HEARTBEAT_ACK => true,
+        _other=> false,
+    }
+}
+
 impl Payload{
     pub fn try_from_command<P: Into<GatewayCommand>>(payload: P) -> Result<Self,serde_json::Error>{
         use self::GatewayCommand::*;
         let payload = payload.into();
 
         let (op,payload) = match payload{
-            Heartbeat(heartbeat) => (1,serde_json::to_value(heartbeat.last_seq)?),
-            Identify(identify) => (2,serde_json::to_value(identify)?),
-            StatusUpdate(status_update) => (3,serde_json::to_value(status_update)?),
+            Heartbeat(heartbeat) => (opcode::HEARTBEAT,serde_json::to_value(heartbeat.last_seq)?),
+            Identify(identify) => (opcode::IDENTIFY,serde_json::to_value(identify)?),
+            StatusUpdate(status_update) => (opcode::STATUS_UPDATE,serde_json::to_value(status_update)?),
             #[cfg(feature="voice")]
-            VoiceStateUpdate(voice_status_update) => (4,serde_json::to_value(voice_status_update)?),
-            Resume(resume) => (6,serde_json::to_value(resume)?),
-            RequestGuildMembers(request_guild_members) => (8,serde_json::to_value(request_guild_members)?),
+            VoiceStateUpdate(voice_status_update) => (opcode::VOICE_STATE_UPDATE,serde_json::to_value(voice_status_update)?),
+            Resume(resume) => (opcode::RESUME,serde_json::to_value(resume)?),
+            RequestGuildMembers(request_guild_members) => (opcode::REQUEST_GUILD_MEMBERS,serde_json::to_value(request_guild_members)?),
         };
         Ok(Payload{
             op,
@@ -126,19 +175,14 @@ impl TryFrom<Payload> for GatewayEvent{
     fn try_from(payload: Payload) -> Result<Self, Self::Error>
     {
         Ok(match payload.op{
-            0  => ReceivableEvent::from_payload(payload)?.into(),
-            1  => GatewayEvent::HeartbeatRequest,
+            opcode::DISPATCH  => ReceivableEvent::from_payload(payload)?.into(),
+            opcode::HEARTBEAT  => GatewayEvent::HeartbeatRequest,
+            opcode::RECONNECT  => GatewayEvent::Reconnect,
+            opcode::INVALID_SESSION  => GatewayEvent::InvalidSession(InvalidSession{resumable: serde_json::from_value(payload.d)?}),
+            opcode::HELLO => serde_json::from_value::<Hello>(payload.d)?.into(),
+            opcode::HEARTBEAT_ACK => GatewayEvent::HeartbeatAck,
             //TODO: just ignore send only ops rather than panic?
-            2  => panic!("Should never recieve identify payloads"),
-            3  => panic!("Should never recieve status update payloads"),
-            4  => panic!("Should never recieve voice update payloads"),
-            5  => panic!("Should never recieve voice ping payloads"),
-            6  => panic!("Should never recieve ping payloads"),
-            7  => GatewayEvent::Reconnect,
-            8  => panic!("Should never recieve request guild members payloads"),
-            9  => GatewayEvent::InvalidSession(InvalidSession{resumable: serde_json::from_value(payload.d)?}),
-            10 => serde_json::from_value::<Hello>(payload.d)?.into(),
-            11 => GatewayEvent::HeartbeatAck,
+            other if known_opcode(other) => panic!("should never recieve `{}` payload", opcode_name(other)),
             other => Err(crate::payload::FromPayloadError::UnknownOpcode(other))?,
         })
     }
@@ -266,7 +310,7 @@ impl ReceivableEvent{
                             $name => Ok(ReceivableEvent::$variant(serde_json::from_value(payload.d)?)),
                         )*
                         name => {
-                            warn!("Unknown payload type: {}",name);
+                            warn!("Unknown dispatch event: {}",name);
                             Ok(ReceivableEvent::Unknown{name: name.into(), value: payload.d})
                         }
                     }

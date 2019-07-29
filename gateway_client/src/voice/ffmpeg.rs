@@ -45,14 +45,14 @@ fn try_fill_i16_from<T: ByteOrder>(r: &mut dyn Read, dst: &mut[i16]) -> Result<u
     //read bytes must be a multiple of 2 for slicing as an i16 to make sense
     assert!(read%2==0);
     T::from_slice_i16(dst);
-    Ok(read)
+    Ok(read/2)
 }
 
 pub struct FfmpegStream(::std::process::Child);
 
 impl AudioStream for FfmpegStream {
-	fn read_frame(&mut self, buffer: &mut [i16]){
-		try_fill_i16_from::<LittleEndian>(self.0.stdout.as_mut().expect("missing stdout"),buffer).expect("FIXME");
+	fn read_frame(&mut self, buffer: &mut [i16]) -> Result<usize,io::Error>{
+		try_fill_i16_from::<LittleEndian>(self.0.stdout.as_mut().expect("missing stdout"),buffer)
 	}
 }
 

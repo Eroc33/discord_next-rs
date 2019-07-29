@@ -56,6 +56,12 @@ pub fn nonce(packet: &[u8]) -> [u8;24]
     nonce
 }
 
+pub fn silence_frame(packet_body: &mut [u8]) -> usize
+{
+    (&mut packet_body[..3]).copy_from_slice(&[0xF8, 0xFF, 0xFE]);
+    3
+}
+
 #[cfg(test)]
 mod test{
     #[test]

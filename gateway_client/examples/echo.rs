@@ -31,7 +31,7 @@ async fn main(){
             return;
         }
     };
-    let res: Result<(),discord_next::Error> = conn.run(async move |_conn, event, client|{
+    let res: Result<(),discord_next::Error> = conn.run(async move |_conn, event, client: discord_next::rest_client::Client|{
         println!("event: {:?}:", event);
         match event{
             discord_next::model::ReceivableEvent::MessageCreate(msg) => {

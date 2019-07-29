@@ -13,7 +13,11 @@ use futures::{
     stream,
     prelude::*,
     compat::*,
-    channel::mpsc::{UnboundedReceiver,UnboundedSender},
+    channel::{
+        mpsc::{UnboundedSender},
+        oneshot,
+    },
+    future,
     select,
 };
 use url::Url;
@@ -33,13 +37,6 @@ pub enum Error {
     Ws(#[cause] tungstenite::error::Error),
     #[fail(display = "An error occured during (de)serialization {:?}",_0)]
     Json(#[cause] serde_json::Error),
-    #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
-    HeartbeatTimer(#[cause] tokio::timer::Error),
-    #[fail(display = "An error with a rest operation: {}",_0)]
-    RestError(#[cause] discord_next_rest::Error),
-    #[fail(display = "Gateway connection closed: {:?}",_0)]
-    ConnectionClosed(Option<model::CloseCode>),
-    #[cfg(feature="voice")]
     #[fail(display = "Voice connection closed: {:?}",_0)]
     VoiceConnectionClosed(Option<model::voice::CloseCode>),
     #[fail(display = "Couldn't send on gateway connection. It is most likely closed: {:?}",_0)]
@@ -76,12 +73,6 @@ impl From<futures::channel::mpsc::SendError> for Error{
     }
 }
 
-impl From<discord_next_rest::Error> for Error{
-    fn from(e: discord_next_rest::Error) -> Self{
-        Error::RestError(e)
-    }
-}
-
 impl From<url::ParseError> for Error{
     fn from(e: url::ParseError) -> Self{
         Error::Url(e)
@@ -100,24 +91,18 @@ impl From<serde_json::Error> for Error{
     }
 }
 
-#[cfg(feature="connection")]
-impl From<tokio::timer::Error> for Error{
-    fn from(e: tokio::timer::Error) -> Self{
-        Error::HeartbeatTimer(e)
-    }
-}
-
 pub trait AudioStream{
-    fn read_frame(&mut self, buffer: &mut [i16]);
+    fn read_frame(&mut self, buffer: &mut [i16]) -> Result<usize,std::io::Error>;
 }
 
 impl AudioStream for Box<dyn AudioStream + Send>{
-    fn read_frame(&mut self, buffer: &mut [i16]){
+    fn read_frame(&mut self, buffer: &mut [i16]) -> Result<usize,std::io::Error>{
         self.as_mut().read_frame(buffer)
     }
 }
 
 struct ConnectionAudioRunner{
+    sender: crate::connection::ConnectionWriter,
     sink: UnboundedSender<model::voice::VoiceCommand>,
     audio_encoder: opus::Encoder,
     secret_key: secretbox::Key,
@@ -127,6 +112,8 @@ struct ConnectionAudioRunner{
     udp_addr: std::net::SocketAddr,
     udp: tokio::net::UdpSocket,
     speaking: bool,
+    silent_frames: u8,
+    guild_id: model::GuildId,
 }
 
 impl ConnectionAudioRunner{
@@ -145,13 +132,13 @@ impl ConnectionAudioRunner{
         trace!("speaking status set to: {}", speaking);
         Ok(())
     }
-    pub async fn run(mut self, mut audio_stream: impl AudioStream) -> Result<(),Error>
+
+    pub async fn run(mut self, mut audio_stream: impl AudioStream, complete: oneshot::Sender<()>) -> Result<(),Error>
     {
         const ENCRYPTION_HEADROOM: usize = 16;
         const FRAME_DURATION: Duration = Duration::from_millis(20);
         let mut udp_timer = tokio::timer::Interval::new_interval(FRAME_DURATION);
         loop{
-            //let frame_start = Instant::now();
             self.set_speaking(true).await?;
             //let mut packet_buf = [0u8;512];
             //self.udp.recv_from(&mut packet_buf).await?;
@@ -160,7 +147,12 @@ impl ConnectionAudioRunner{
             //TODO: allow switching to stereo (960*2 samples)
             let mut audio_buf = [0i16;960];
 
-            audio_stream.read_frame(&mut audio_buf);
+            let audio_frame_size = audio_stream.read_frame(&mut audio_buf)?;
+
+            if audio_frame_size == 0 && self.silent_frames >= 5{
+                //TODO: consider adding a is_complete() method to AudioStream to still allow long running streams to exit
+                break;
+            }
 
             //create packet
             let packet_len = {
@@ -171,7 +163,14 @@ impl ConnectionAudioRunner{
                 let nonce = secretbox::Nonce(model::voice::udp::nonce(&header));
 
                 let extent = body.len()-ENCRYPTION_HEADROOM;
-                let audio_len = self.audio_encoder.encode(&audio_buf[..],&mut body[..extent]).expect("FIXME");
+                let audio_len = if audio_frame_size == 0 {
+                    self.silent_frames += 1;
+                    model::voice::udp::silence_frame(&mut body[..extent])
+                }else{
+                    self.silent_frames = 0;
+                    trace!("opus encoding size {} frame", audio_frame_size);
+                    self.audio_encoder.encode(&audio_buf[..],&mut body[..extent]).expect("FIXME")
+                };
 
                 let encrypted = secretbox::seal(&body[..audio_len], &nonce, &self.secret_key);
 
@@ -185,28 +184,33 @@ impl ConnectionAudioRunner{
             udp_timer.next().await;
 
             self.udp.send_to(&packet_buf[..packet_len],&self.udp_addr).await?;
-
-            // let elapsed = Instant::now() - frame_start;
-            // trace!("audio packet sent in {:?}", elapsed);
-
-            // if elapsed < FRAME_DURATION {
-            //     let deadline = frame_start + FRAME_DURATION;
-            //     trace!("waiting {:?} for frame duration to elapse",deadline.checked_duration_since(Instant::now()));
-            //     udp_timer.next().await;
-            // }
         }
+        self.set_speaking(false).await?;
+        self.sender.sink.send(model::VoiceStateUpdate{
+            guild_id: self.guild_id,
+            channel_id: None,
+            self_deaf: false,
+            self_mute: false,
+        }.into()).await?;
+        //ignore the result as if the reciever is dropped we don't need to try to stop it
+        let _ignore = complete.send(());
+        Ok(())
     }
 }
 
 struct ConnectionWebsocketRunner{
     sink: UnboundedSender<model::voice::VoiceCommand>,
-    stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send +'static>>>,
+    stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + Unpin + 'static>>>,
     heartbeat_timer: stream::Fuse<tokio::timer::Interval>,
 }
 
 impl ConnectionWebsocketRunner{
-    async fn turn(&mut self) -> Result<bool,Error>{
+    async fn turn(&mut self, mut complete: &mut future::Fuse<oneshot::Receiver<()>>) -> Result<bool,Error>{
         select!{
+            _complete = complete => {
+                //doesn't matter if we got complete signal, or it was just dropped
+                return Ok(true);
+            },
             _beat = self.heartbeat_timer.next() => {
                 self.sink.send(crate::model::voice::VoiceCommand::Heartbeat(0)).await?;
                 return Ok(false);
@@ -261,46 +265,56 @@ impl ConnectionWebsocketRunner{
         }
     }
 
-    async fn run(mut self) -> Result<(),Error>{
-        while !self.turn().await?{}
+    async fn run(mut self,complete: oneshot::Receiver<()>) -> Result<(),Error>{
+        let mut complete = complete.fuse();
+        while !self.turn(&mut complete).await?{
+        }
+        info!("ws_runner complete");
         Ok(())
     }
 }
 
+#[derive(Clone)]
+pub struct VoiceConnector{
+    sender: crate::connection::ConnectionWriter,
+    voice_state_store: crate::connection::VoiceStateStore,
+    user_id: model::UserId,
+    session_id: String,
+}
+
+impl From<&mut crate::connection::Connection> for VoiceConnector{
+    fn from(gateway_conn: &mut crate::connection::Connection) -> Self{
+        Self::from(&*gateway_conn)
+    }
+}
+
+impl From<&crate::connection::Connection> for VoiceConnector{
+    fn from(gateway_conn: &crate::connection::Connection) -> Self{
+        Self{
+            sender: gateway_conn.clone_writer(),
+            voice_state_store: gateway_conn.voice_update_store().clone(),
+            user_id: gateway_conn.user.id,
+            session_id: gateway_conn.session_id.clone(),
+        }
+    }
+}
+
+impl VoiceConnector{
+    pub fn connect(&self, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> impl Future<Output=Result<Connection,Error>> + 'static
+    {
+        Connection::connect_internal(self.sender.clone(),self.voice_state_store.clone(),self.user_id, self.session_id.clone(), guild_id,channel_id)
+    }
+}
+
 pub struct Connection{
-    sink: UnboundedSender<model::voice::VoiceCommand>,
-    stream: Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send +'static>>,
-    audio_encoder: opus::Encoder,
-    secret_key: secretbox::Key,
-    seq_num: u16,
-    timestamp: u32,
-    ssrc: u32,
-    udp_addr: std::net::SocketAddr,
-    udp: tokio::net::UdpSocket,
-    heartbeat_timer: tokio::timer::Interval,
-    speaking: bool,
+    audio_runner: ConnectionAudioRunner,
+    ws_runner: ConnectionWebsocketRunner,
 }
 
 impl Connection{
-    fn decompose(self) -> (ConnectionAudioRunner,ConnectionWebsocketRunner)
-    {
-        let Connection{sink, stream, audio_encoder, secret_key, seq_num, timestamp, ssrc, udp_addr, udp, heartbeat_timer, speaking} = self;
-        (ConnectionAudioRunner{
-            sink: sink.clone(), audio_encoder, secret_key, seq_num, timestamp, ssrc, udp_addr, udp, speaking,
-        },ConnectionWebsocketRunner{
-            sink, stream: stream.fuse(), heartbeat_timer: heartbeat_timer.fuse(),
-        })
-    }
+    async fn connect_internal(mut sender: crate::connection::ConnectionWriter, voice_state_store: crate::connection::VoiceStateStore, user_id: model::UserId, session_id: String, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> Result<Self,Error>{
 
-    pub fn connect(gateway_connection: &mut crate::connection::Connection, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> impl Future<Output=Result<Self,Error>>
-    {
-        let sender = gateway_connection.clone_writer();
-        let vsu = gateway_connection.voice_server_updates_for(guild_id);
-        let user_id = gateway_connection.user.id;
-        let session_id = gateway_connection.session_id.clone();
-        Self::connect_internal(sender,vsu,user_id, session_id, guild_id,channel_id)
-    }
-    async fn connect_internal(mut sender: crate::connection::ConnectionWriter, mut vsu: UnboundedReceiver<crate::connection::VoiceInfo>, user_id: model::UserId, session_id: String, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> Result<Self,Error>{
+        let mut vsu = voice_state_store.register(guild_id);
 
         trace!("sending voice state update");
         sender.sink.send(model::VoiceStateUpdate{
@@ -329,7 +343,7 @@ impl Connection{
                 Ok(tungstenite::Message::Text(payload))
             })
         }));
-        let mut stream: Pin<Box<dyn Stream<Item=Result<model::Payload,Error>>+Send+Unpin>> = Box::pin(stream.map_err(Error::from).and_then(|message|{
+        let mut stream: Pin<Box<dyn Stream<Item=Result<model::Payload,Error>>+Send+Unpin+'static>> = Box::pin(stream.map_err(Error::from).and_then(|message|{
             future::lazy(|_|{
                 if let tungstenite::Message::Close(close_frame) = message {
                     return Err(Error::VoiceConnectionClosed(close_frame.and_then(|frame| model::voice::CloseCode::try_from(Into::<u16>::into(frame.code)).ok())));
@@ -403,29 +417,41 @@ impl Connection{
             }
         };
 
+        let sink = sink.unbounded_channeled();
+
         Ok(Connection{
-            sink: sink.unbounded_channeled(),
-            stream,
-            audio_encoder: opus::Encoder::new(model::voice::udp::SAMPLE_RATE, opus::Channels::Mono, opus::Application::Audio).expect("Couldn't create opus encoder"),
-            secret_key: secretbox::Key::from_slice(&session_description.secret_key).expect("key size for xsalsa20poly1305 should be 32"),
-            ssrc: ready.ssrc,
-            seq_num: 0,
-            timestamp: 0,
-            udp_addr,
-            udp,
-            heartbeat_timer: tokio::timer::Interval::new(Instant::now(), Duration::from_millis((hello.heartbeat_interval * 3)/4)),
-            speaking: false,
+            audio_runner: ConnectionAudioRunner{
+                sink: sink.clone(),
+                audio_encoder: opus::Encoder::new(model::voice::udp::SAMPLE_RATE, opus::Channels::Mono, opus::Application::Audio).expect("Couldn't create opus encoder"),
+                secret_key: secretbox::Key::from_slice(&session_description.secret_key).expect("key size for xsalsa20poly1305 should be 32"),
+                seq_num: 0,
+                timestamp: 0,
+                ssrc: ready.ssrc,
+                udp_addr,
+                udp,
+                speaking: false,
+                silent_frames: 0,
+                guild_id,
+                sender,
+            },
+            ws_runner: ConnectionWebsocketRunner{
+                sink,
+                stream: stream.fuse(),
+                heartbeat_timer: tokio::timer::Interval::new(Instant::now(), Duration::from_millis((hello.heartbeat_interval * 3)/4)).fuse(),
+            },
         })
     }
 
     pub async fn run(self, audio_stream: impl AudioStream){
-        let (audio_runner,ws_runner) = self.decompose();
+        let Connection{audio_runner, ws_runner} = self;
 
-        tokio::spawn(ws_runner.run().map(|res|{
+        let (tx,rx) = oneshot::channel();
+
+        tokio::spawn(ws_runner.run(rx).map(|res|{
             res.expect("FIXME");
         }).instrument(span!(Level::INFO, "ws_runner")));
 
-        audio_runner.run(audio_stream).map(|res|{
+        audio_runner.run(audio_stream,tx).map(|res|{
             res.expect("FIXME");
         }).instrument(span!(Level::INFO, "audio_runner")).await;
     }

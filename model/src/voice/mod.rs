@@ -32,6 +32,40 @@ pub mod opcode{
     pub const CLIENT_DISCONNECT: u64 = 13;
 }
 
+pub fn opcode_name(opcode: u64) -> &'static str{
+    match opcode{
+        opcode::IDENTIFY => "IDENTIFY",
+        opcode::SELECT_PROTOCOL => "SELECT_PROTOCOL",
+        opcode::READY => "READY",
+        opcode::HEARTBEAT => "HEARTBEAT",
+        opcode::SESSION_DESCRIPTION => "SESSION_DESCRIPTION",
+        opcode::SPEAKING => "SPEAKING",
+        opcode::HEARTBEAT_ACK => "HEARTBEAT_ACK",
+        opcode::RESUME => "RESUME",
+        opcode::HELLO => "HELLO",
+        opcode::RESUMED => "RESUMED",
+        opcode::CLIENT_DISCONNECT => "CLIENT_DISCONNECT",
+        _other=> "unknown",
+    }
+}
+
+pub fn known_opcode(opcode: u64) -> bool{
+    match opcode{
+        opcode::IDENTIFY |
+        opcode::SELECT_PROTOCOL |
+        opcode::READY |
+        opcode::HEARTBEAT |
+        opcode::SESSION_DESCRIPTION |
+        opcode::SPEAKING |
+        opcode::HEARTBEAT_ACK |
+        opcode::RESUME |
+        opcode::HELLO |
+        opcode::RESUMED |
+        opcode::CLIENT_DISCONNECT => true,
+        _other=> false,
+    }
+}
+
 impl Payload{
     pub fn try_from_voice_command<P: Into<VoiceCommand>>(payload: P) -> Result<Self,serde_json::Error>{
         use self::VoiceCommand::*;
@@ -92,6 +126,8 @@ impl TryFrom<Payload> for VoiceEvent{
             opcode::RESUMED => VoiceEvent::Resumed,
             //TODO: what data does this give?
             opcode::CLIENT_DISCONNECT => VoiceEvent::ClientDisconnect,
+            //TODO: just ignore send only ops rather than panic?
+            other if known_opcode(other) => panic!("should never recieve `{}` payload", opcode_name(other)),
             other => Err(crate::payload::FromPayloadError::UnknownOpcode(other))?,
         })
     }
