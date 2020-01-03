@@ -1,5 +1,4 @@
 #![recursion_limit="512"]
-#![feature(generators,await_macro, async_await, todo_macro, checked_duration_since)]
 extern crate tokio;
 extern crate serde_json;
 #[macro_use]

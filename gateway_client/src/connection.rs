@@ -4,20 +4,19 @@ use std::{
     pin::Pin,
     convert::{TryFrom,TryInto},
 };
-#[cfg(feature="voice")]
-use std::collections::HashMap;
 use futures::{
     prelude::*,
     sink::{Sink},
     stream,
     compat::*,
-    channel::mpsc::{UnboundedSender,UnboundedReceiver},
+    channel::mpsc::UnboundedSender,
 };
 use crate::{
     extensions::*,
     close_on_drop::CloseOnDrop,
     Error,
     model,
+    voice::{VoiceStateStore,VoiceStateUpdateError},
 };
 use tracing::*;
 use futures_01::stream::Stream as _;
@@ -225,83 +224,5 @@ impl Connection{
             #[cfg(feature="voice")]
             voice_update_store: Default::default(),
         })
-    }
-}
-
-pub type VoiceStateStore = EventRouter<model::GuildId,VoiceInfo>;
-
-use std::sync::Arc;
-use futures::lock::Mutex;
-use std::hash::Hash;
-
-pub struct VoiceStateUpdateError;
-
-struct EventRouterInner<K: Eq + Hash,V>{
-    routes: Mutex<HashMap<K,UnboundedSender<V>>>,
-}
-
-//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
-impl<K: Eq + Hash,V> Default for EventRouterInner<K,V>{
-    fn default() -> Self{
-        Self{
-            routes: Mutex::new(Default::default())
-        }
-    }
-}
-
-impl<K,V> EventRouterInner<K,V>
-    where K: Eq + Hash + std::fmt::Debug
-{
-    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
-        loop{
-            if let Some(mut locked) = self.routes.try_lock(){
-                let (tx,rx) = futures::channel::mpsc::unbounded();
-                locked.insert(key,tx);
-                return rx;
-            }
-        }
-    }
-    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
-        if let Some(mut chan) = self.routes.lock().await.get(key){
-            info!("Voice update for {:?}",key);
-            //TODO: remove channels where send fails? (definitely want to do this if the failure is due to disconnection)
-            chan.send(event).await.map_err(|_| VoiceStateUpdateError)?;
-        }else{
-            info!("Unrouted event");
-        }
-        Ok(())
-    }
-}
-
-pub struct EventRouter<K: Eq + Hash,V>{
-    inner: Arc<EventRouterInner<K,V>>,
-}
-
-//#[derive(Clone)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
-impl<K: Eq + Hash,V> Clone for EventRouter<K,V>{
-    fn clone(&self) -> Self{
-        Self{
-            inner: self.inner.clone()
-        }
-    }
-}
-
-//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
-impl<K: Eq + Hash,V> Default for EventRouter<K,V>{
-    fn default() -> Self{
-        Self{
-            inner: Arc::new(Default::default())
-        }
-    }
-}
-
-impl<K,V> EventRouter<K,V>
-    where K: Eq + Hash + std::fmt::Debug
-{
-    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
-        self.inner.register(key)
-    }
-    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
-        self.inner.send_event(key,event).await
     }
 }

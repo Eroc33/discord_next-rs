@@ -1,4 +1,4 @@
-#![feature(generators,await_macro,async_await)]
+#![feature(generators)]
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]

@@ -45,8 +45,10 @@ pub enum Error {
     Io(#[cause] std::io::Error),
     #[fail(display = "Ip discovery failed: {:?}",_0)]
     IpDiscovery(#[cause] model::voice::udp::DiscoveryPacketError),
-    #[fail(display = "FromPayloadError: {:?}",_0)]
+    #[fail(display = "FromPayload error: {:?}",_0)]
     FromPayload(#[cause] model::FromPayloadError),
+    #[fail(display = "Opus error: {:?}",_0)]
+    Opus(#[cause] opus::Error),
 }
 
 impl From<model::FromPayloadError> for Error{
@@ -88,6 +90,12 @@ impl From<tungstenite::error::Error> for Error{
 impl From<serde_json::Error> for Error{
     fn from(e: serde_json::Error) -> Self{
         Error::Json(e)
+    }
+}
+
+impl From<opus::Error> for Error{
+    fn from(e: opus::Error) -> Self{
+        Error::Opus(e)
     }
 }
 
@@ -169,7 +177,7 @@ impl ConnectionAudioRunner{
                 }else{
                     self.silent_frames = 0;
                     trace!("opus encoding size {} frame", audio_frame_size);
-                    self.audio_encoder.encode(&audio_buf[..],&mut body[..extent])?;
+                    self.audio_encoder.encode(&audio_buf[..],&mut body[..extent])?
                 };
 
                 let encrypted = secretbox::seal(&body[..audio_len], &nonce, &self.secret_key);
@@ -277,7 +285,7 @@ impl ConnectionWebsocketRunner{
 #[derive(Clone)]
 pub struct VoiceConnector{
     sender: crate::connection::ConnectionWriter,
-    voice_state_store: crate::connection::VoiceStateStore,
+    voice_state_store: VoiceStateStore,
     user_id: model::UserId,
     session_id: String,
 }
@@ -312,7 +320,7 @@ pub struct Connection{
 }
 
 impl Connection{
-    async fn connect_internal(mut sender: crate::connection::ConnectionWriter, voice_state_store: crate::connection::VoiceStateStore, user_id: model::UserId, session_id: String, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> Result<Self,Error>{
+    async fn connect_internal(mut sender: crate::connection::ConnectionWriter, voice_state_store: VoiceStateStore, user_id: model::UserId, session_id: String, guild_id: model::GuildId, channel_id: Option<model::ChannelId>) -> Result<Self,Error>{
 
         let mut vsu = voice_state_store.register(guild_id);
 
@@ -458,5 +466,87 @@ impl Connection{
                 error!("Error: {:?}",e);
             }
         }).instrument(span!(Level::INFO, "audio_runner")).await;
+    }
+}
+
+
+use std::collections::HashMap;
+use futures::channel::mpsc::UnboundedReceiver;
+
+pub type VoiceStateStore = EventRouter<model::GuildId,crate::connection::VoiceInfo>;
+
+use std::sync::Arc;
+use futures::lock::Mutex;
+use std::hash::Hash;
+
+pub struct VoiceStateUpdateError;
+
+struct EventRouterInner<K: Eq + Hash,V>{
+    routes: Mutex<HashMap<K,UnboundedSender<V>>>,
+}
+
+//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Default for EventRouterInner<K,V>{
+    fn default() -> Self{
+        Self{
+            routes: Mutex::new(Default::default())
+        }
+    }
+}
+
+impl<K,V> EventRouterInner<K,V>
+    where K: Eq + Hash + std::fmt::Debug
+{
+    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
+        loop{
+            if let Some(mut locked) = self.routes.try_lock(){
+                let (tx,rx) = futures::channel::mpsc::unbounded();
+                locked.insert(key,tx);
+                return rx;
+            }
+        }
+    }
+    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
+        if let Some(mut chan) = self.routes.lock().await.get(key){
+            info!("Voice update for {:?}",key);
+            //TODO: remove channels where send fails? (definitely want to do this if the failure is due to disconnection)
+            chan.send(event).await.map_err(|_| VoiceStateUpdateError)?;
+        }else{
+            info!("Unrouted event");
+        }
+        Ok(())
+    }
+}
+
+pub struct EventRouter<K: Eq + Hash,V>{
+    inner: Arc<EventRouterInner<K,V>>,
+}
+
+//#[derive(Clone)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Clone for EventRouter<K,V>{
+    fn clone(&self) -> Self{
+        Self{
+            inner: self.inner.clone()
+        }
+    }
+}
+
+//#[derive(Default)] doesn't work (see https://github.com/rust-lang/rust/issues/26925) so we implement it manually
+impl<K: Eq + Hash,V> Default for EventRouter<K,V>{
+    fn default() -> Self{
+        Self{
+            inner: Arc::new(Default::default())
+        }
+    }
+}
+
+impl<K,V> EventRouter<K,V>
+    where K: Eq + Hash + std::fmt::Debug
+{
+    pub fn register(&self, key: K) -> UnboundedReceiver<V>{
+        self.inner.register(key)
+    }
+    pub async fn send_event(&self, key: &K, event: V) -> Result<(),VoiceStateUpdateError>{
+        self.inner.send_event(key,event).await
     }
 }

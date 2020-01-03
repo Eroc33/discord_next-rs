@@ -1,4 +1,3 @@
-#![feature(async_await, await_macro)]
 extern crate tokio;
 extern crate discord_next;
 extern crate dotenv;

@@ -111,6 +111,7 @@ pub enum GatewayCommand{
 wrapping_from!(GatewayCommand,Heartbeat,expect_heartbeat);
 wrapping_from!(GatewayCommand,Identify,expect_identify);
 wrapping_from!(GatewayCommand,StatusUpdate,expect_status_update);
+#[cfg(feature="voice")]
 wrapping_from!(GatewayCommand,VoiceStateUpdate,expect_voice_state_update);
 wrapping_from!(GatewayCommand,Resume,expect_resume);
 wrapping_from!(GatewayCommand,RequestGuildMembers,expect_request_guild_members);
