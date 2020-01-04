@@ -6,7 +6,7 @@ extern crate envy;
 #[macro_use]
 extern crate serde_derive;
 
-use tracing_fmt;
+use tracing_subscriber;
 
 use std::sync::Arc;
 
@@ -43,7 +43,7 @@ async fn main(){
     
     let vars = Arc::new(envy::from_env::<EnvVars>().unwrap());
 
-    let subscriber = tracing_fmt::FmtSubscriber::builder().finish();
+    let subscriber = tracing_subscriber::fmt::Subscriber::builder().finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
     let conn = discord_next::Connection::connect(vars.bot_token.clone()).await;
