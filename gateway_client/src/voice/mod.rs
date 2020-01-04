@@ -6,13 +6,11 @@ use crate::{
 use std::{
     pin::Pin,
     convert::{TryFrom,TryInto},
-    time::{Duration,Instant},
 };
 use futures::{
     sink::{Sink},
     stream,
     prelude::*,
-    compat::*,
     channel::{
         mpsc::{UnboundedSender},
         oneshot,
@@ -23,7 +21,6 @@ use futures::{
 use url::Url;
 use rust_sodium::crypto::secretbox;
 use tracing::*;
-use futures_01::stream::Stream as _;
 use model::voice::udp::RTP_HEADER_LEN;
 use tracing_futures::Instrument as _;
 
@@ -144,8 +141,8 @@ impl ConnectionAudioRunner{
     pub async fn run(mut self, mut audio_stream: impl AudioStream, complete: oneshot::Sender<()>) -> Result<(),Error>
     {
         const ENCRYPTION_HEADROOM: usize = 16;
-        const FRAME_DURATION: Duration = Duration::from_millis(20);
-        let mut udp_timer = tokio::timer::Interval::new_interval(FRAME_DURATION);
+        const FRAME_DURATION: tokio::time::Duration = tokio::time::Duration::from_millis(20);
+        let mut udp_timer = tokio::time::interval(FRAME_DURATION);
         loop{
             self.set_speaking(true).await?;
             //let mut packet_buf = [0u8;512];
@@ -209,7 +206,7 @@ impl ConnectionAudioRunner{
 struct ConnectionWebsocketRunner{
     sink: UnboundedSender<model::voice::VoiceCommand>,
     stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + Unpin + 'static>>>,
-    heartbeat_timer: stream::Fuse<tokio::timer::Interval>,
+    heartbeat_timer: stream::Fuse<tokio::time::Interval>,
 }
 
 impl ConnectionWebsocketRunner{
@@ -340,9 +337,8 @@ impl Connection{
         let url = Url::parse(&format!("wss://{}?v=3",voice_info.endpoint.trim_end_matches(":80")))?;
 
         trace!("connecting voice websocket: {}", url);
-        let (stream,_res) = tokio_tungstenite::connect_async(url).compat().await?;
+        let (stream,_res) = tokio_tungstenite::connect_async(url).await?;
         let (sink,stream) = stream.split();
-        let (sink,stream) = (sink.sink_compat(),stream.compat());
         let mut sink: Pin<Box<dyn Sink<model::voice::VoiceCommand,Error=Error>+Send+Unpin>> = Box::pin(sink.sink_map_err(Error::from).with(|payload: model::voice::VoiceCommand|{
             future::lazy(|_|{
                 let payload = model::Payload::try_from_voice_command(payload)?;
@@ -387,7 +383,7 @@ impl Connection{
 
         eprintln!("udp endpoint: {:?}", udp_addr);
 
-        let mut udp = tokio::net::UdpSocket::bind(&std::net::SocketAddr::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(),0))?;
+        let mut udp = tokio::net::UdpSocket::bind(&std::net::SocketAddr::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(),0)).await?;
 
         {
             trace!("sending ip discovery packet");
@@ -445,7 +441,7 @@ impl Connection{
             ws_runner: ConnectionWebsocketRunner{
                 sink,
                 stream: stream.fuse(),
-                heartbeat_timer: tokio::timer::Interval::new(Instant::now(), Duration::from_millis((hello.heartbeat_interval * 3)/4)).fuse(),
+                heartbeat_timer: tokio::time::interval(tokio::time::Duration::from_millis((hello.heartbeat_interval * 3)/4)).fuse(),
             },
         })
     }

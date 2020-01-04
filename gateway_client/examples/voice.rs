@@ -58,7 +58,7 @@ async fn main(){
         }
     };
 
-    let res: Result<(),discord_next::Error> = conn.run(move |conn, event, client|{
+    let res: Result<(),discord_next::Error> = conn.run(move |conn, event, _client|{
         let voice_connector = discord_next::voice::VoiceConnector::from(conn);
         let vars = vars.clone();
         async move{

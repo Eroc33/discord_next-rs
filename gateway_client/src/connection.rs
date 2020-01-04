@@ -1,6 +1,5 @@
 
 use std::{
-    time::{Duration,Instant},
     pin::Pin,
     convert::{TryFrom,TryInto},
 };
@@ -8,7 +7,6 @@ use futures::{
     prelude::*,
     sink::{Sink},
     stream,
-    compat::*,
     channel::mpsc::UnboundedSender,
 };
 use crate::{
@@ -19,7 +17,6 @@ use crate::{
     voice::{VoiceStateStore,VoiceStateUpdateError},
 };
 use tracing::*;
-use futures_01::stream::Stream as _;
 
 pub struct VoiceInfo{
     pub token: String,
@@ -34,7 +31,7 @@ pub (crate) struct ConnectionWriter{
 pub struct Connection{
     pub session_id: String,
     stream: stream::Fuse<Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + 'static>>>,
-    heartbeat_timer: stream::Fuse<tokio::timer::Interval>,
+    heartbeat_timer: stream::Fuse<tokio::time::Interval>,
     sink: UnboundedSender<model::GatewayCommand>,
     token: String,
     seq_num: Option<u64>,
@@ -171,9 +168,8 @@ impl Connection{
         let token = token.into();
         let client = crate::rest_client::Client::new(token.clone());
         let url = client.get_gateway(crate::GATEWAY_VERSION).await?;
-        let (stream,_res) = tokio_tungstenite::connect_async(url).compat().await?;
+        let (stream,_res) = tokio_tungstenite::connect_async(url).await?;
         let (sink,stream) = stream.split();
-        let (sink,stream) = (sink.sink_compat(),stream.compat());
         let mut sink: Box<dyn Sink<model::GatewayCommand,Error=Error>+Send+Unpin> = Box::new(sink.sink_map_err(Error::from).with(|payload: model::GatewayCommand|{
             future::lazy(|_|{
                 let payload = model::Payload::try_from_command(payload)?;
@@ -219,7 +215,7 @@ impl Connection{
             token,
             user: ready.user,
             stream: (stream as Pin<Box<dyn Stream<Item=Result<model::Payload,Error>> + Send + 'static>>).fuse(),
-            heartbeat_timer: tokio::timer::Interval::new(Instant::now(),Duration::from_millis(heartbeat_interval)).fuse(),
+            heartbeat_timer: tokio::time::interval(tokio::time::Duration::from_millis(heartbeat_interval)).fuse(),
             seq_num: None,
             #[cfg(feature="voice")]
             voice_update_store: Default::default(),

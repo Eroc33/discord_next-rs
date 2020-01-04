@@ -103,7 +103,7 @@ impl NewMessage{
 impl Client{
     pub fn new<S: Into<String>>(bot_token: S) -> Self{
         //TODO: propagate error instead of using expect
-        let https_connector = hyper_tls::HttpsConnector::new(4).expect("couldn't create https connector");
+        let https_connector = hyper_tls::HttpsConnector::new();
         Self{
             http_client: hyper::client::Client::builder().build(https_connector),
             bot_token: bot_token.into(),
@@ -179,7 +179,7 @@ impl Client{
               S2: AsRef<str> + 'static,
     {
         let res = self.execute_request(hyper::Method::GET, limit_url, url, hyper::Body::empty()).await?;
-        let bytes = res.into_body().map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+        let bytes = res.into_body().map_ok(|body| body.to_vec()).try_concat().await?;
         Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
@@ -199,7 +199,7 @@ impl Client{
               S2: AsRef<str> + 'static,
     {
         let res = self.execute_request(hyper::Method::POST, limit_url, url, hyper::Body::from(serde_json::to_string(&data)?)).await?;
-        let bytes = res.into_body().map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+        let bytes = res.into_body().map_ok(|body| body.to_vec()).try_concat().await?;
         Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
@@ -211,20 +211,19 @@ impl Client{
         let url = url.as_ref();
         let limit_url = limit_url.into().unwrap_or_else(|| url.to_owned());
 
-        let body_bytes = body.map_ok(hyper::Chunk::into_bytes).try_concat().await?;
+        let body_bytes = body.map_ok(|body| body.to_vec()).try_concat().await?;
 
         'retry_loop: loop{
             self.rate_limiter.enforce_limit(&limit_url).await?;
 
             let absolute_url = format!("{base_url}{url}",base_url=API_BASE,url=url);
 
-            let mut req_builder = hyper::Request::builder();
-            req_builder
+            let req_builder = hyper::Request::builder()
                 .method(method.clone())
                 .uri(&absolute_url);
-            self.set_headers(&mut req_builder);
+            let mut req_builder = self.set_headers(req_builder);
             if body_bytes.len() > 0{
-                req_builder.header("Content-Type", "application/json");
+                req_builder = req_builder.header("Content-Type", "application/json");
             }
             let req = req_builder.body(hyper::Body::from(body_bytes.clone()))?;
 
@@ -250,10 +249,10 @@ impl Client{
         }
     }
 
-    fn set_headers(&self, builder: &mut http::request::Builder){
+    fn set_headers(&self, builder: http::request::Builder) -> http::request::Builder{
         builder
             .header("Authorization", format!("Bot {bot_token}",bot_token=self.bot_token))
-            .header("User-Agent", "discord-next-rs (github.com/Eroc33, 0.0.1-prototype)");
+            .header("User-Agent", "discord-next-rs (github.com/Eroc33, 0.0.1-prototype)")
     }
 
     pub async fn get_gateway(&self, version: u8) -> Result<Url,Error>{

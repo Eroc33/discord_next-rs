@@ -26,7 +26,7 @@ pub enum Error {
     #[fail(display = "Was rate limited too many times (>={}) while executing: {}",_0,_1)]
     TooManyRetries(u16,String),
     #[fail(display = "An error with a timer operation for ratelimiting {:?}",_0)]
-    Timer(#[cause] tokio::timer::Error),
+    Timer(#[cause] tokio::time::Error),
     #[fail(display = "A non success response code was returned from an http request: {:?}",_0)]
     UnsuccessfulHttp(http::StatusCode),
     #[fail(display = "An error while building an http data structure {:?}",_0)]
@@ -61,8 +61,8 @@ impl From<serde_json::Error> for Error{
         Error::Json(e)
     }
 }
-impl From<tokio::timer::Error> for Error{
-    fn from(e: tokio::timer::Error) -> Self{
+impl From<tokio::time::Error> for Error{
+    fn from(e: tokio::time::Error) -> Self{
         Error::Timer(e)
     }
 }

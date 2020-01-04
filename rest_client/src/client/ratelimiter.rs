@@ -66,7 +66,7 @@ pub struct RateLimiter{
 
 impl RateLimiter{
     //TODO: this might have performance issues. investigate fine-grained locking
-	pub async fn enforce_limit<'a>(&'a self,endpoint: &'a str) -> Result<(),tokio::timer::Error>{
+	pub async fn enforce_limit<'a>(&'a self,endpoint: &'a str) -> Result<(),tokio::time::Error>{
         loop{
             //get any required wait first, then run it once the rate_limits guard is dropped to avoid lock contention
             let wait = {
@@ -94,7 +94,7 @@ impl RateLimiter{
             };
             if let Some(wait) = wait{
                 trace!("Waiting on ratelimit: {:?}",wait);
-                tokio::timer::Delay::new(wait).await;
+                tokio::time::delay_until(tokio::time::Instant::from_std(wait)).await;
                 trace!("Rate limit wait complete");
             }
             if self.use_resource(endpoint){

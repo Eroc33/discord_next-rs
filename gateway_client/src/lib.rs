@@ -26,7 +26,7 @@ pub enum Error {
     #[fail(display = "An error occured during (de)serialization {:?}",_0)]
     Json(#[cause] serde_json::Error),
     #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
-    HeartbeatTimer(#[cause] tokio::timer::Error),
+    HeartbeatTimer(#[cause] tokio::time::Error),
     #[fail(display = "An error with a rest operation: {}",_0)]
     RestError(#[cause] discord_next_rest::Error),
     #[fail(display = "Gateway connection closed: {:?}",_0)]
@@ -93,8 +93,8 @@ impl From<serde_json::Error> for Error{
     }
 }
 
-impl From<tokio::timer::Error> for Error{
-    fn from(e: tokio::timer::Error) -> Self{
+impl From<tokio::time::Error> for Error{
+    fn from(e: tokio::time::Error) -> Self{
         Error::HeartbeatTimer(e)
     }
 }
