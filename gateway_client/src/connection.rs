@@ -13,9 +13,10 @@ use crate::{
     extensions::*,
     close_on_drop::CloseOnDrop,
     Error,
-    model,
-    voice::{VoiceStateStore,VoiceStateUpdateError},
+    model
 };
+#[cfg(feature="voice")]
+use crate::voice::{VoiceStateStore,VoiceStateUpdateError};
 use tracing::*;
 
 pub struct VoiceInfo{
