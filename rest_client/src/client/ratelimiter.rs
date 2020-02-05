@@ -2,6 +2,7 @@ use std::sync::{Arc,RwLock};
 use std::time::{Duration,Instant};
 use chrono::{DateTime,NaiveDateTime,Utc};
 use std::collections::HashMap;
+use anyhow;
 
 use tracing::*;
 
@@ -37,7 +38,7 @@ impl RateLimitState{
         Duration::from_secs((self.reset_at.timestamp()-Utc::now().timestamp()) as u64)
     }
 
-    pub fn parse(headers: &hyper::HeaderMap) -> Result<Option<Self>,failure::Error>
+    pub fn parse(headers: &http::HeaderMap) -> Result<Option<Self>,anyhow::Error>
     {
         let (limit,remaining,reset_at) = match (headers.get("X-RateLimit-Limit"),headers.get("X-RateLimit-Remaining"),headers.get("X-RateLimit-Reset")){
             (Some(limit),Some(remaining),Some(reset_at)) => (limit,remaining,reset_at),
@@ -120,7 +121,7 @@ impl RateLimiter{
         endpoint_allowed&&global_allowed
     }
 
-    pub fn update_limits(&self, endpoint: String, headers: &hyper::HeaderMap){
+    pub fn update_limits(&self, endpoint: String, headers: &http::HeaderMap){
         let global = headers.contains_key("X-RateLimit-Global");
 
         let rate_limit = match RateLimitState::parse(headers){

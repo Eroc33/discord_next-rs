@@ -2,8 +2,7 @@
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
-#[macro_use]
-extern crate failure;
+use thiserror::Error;
 
 pub use discord_next_model as model;
 
@@ -12,58 +11,24 @@ pub use client::*;
 
 pub (crate) const API_BASE: &str = "https://discordapp.com/api/v6";
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[fail(display = "An http error occurred {:?}",_0)]
-    Http (#[cause] hyper::Error),
-    #[fail(display = "An error occured while parsing a url {:?}",_0)]
-    Url(#[cause] url::ParseError),
-    #[fail(display = "An error occured during (de)serialization {:?}",_0)]
-    Json(#[cause] serde_json::Error),
-    #[fail(display = "An embed was too big {:?}",_0)]
-    EmbedTooBig(#[cause] model::EmbedTooBigError),
-    #[fail(display = "Was rate limited too many times (>={}) while executing: {}",_0,_1)]
+    #[error("An http error occurred {0:?}")]
+    Http (#[from] reqwest::Error),
+    #[error("An error occured while parsing a url {0:?}")]
+    Url(#[from] url::ParseError),
+    #[error("An error occured during (de)serialization {0:?}")]
+    Json(#[from] serde_json::Error),
+    #[error("An embed was too big {:?}",_0)]
+    EmbedTooBig(#[from] model::EmbedTooBigError),
+    #[error("Was rate limited too many times (>={0}) while executing: {1}")]
     TooManyRetries(u16,String),
-    #[fail(display = "An error with a timer operation for ratelimiting {:?}",_0)]
-    Timer(#[cause] tokio::time::Error),
-    #[fail(display = "A non success response code was returned from an http request: {:?}",_0)]
+    #[error("An error with a timer operation for ratelimiting {0:?}")]
+    Timer(#[from] tokio::time::Error),
+    #[error("A non success response code was returned from an http request: {0:?}")]
     UnsuccessfulHttp(http::StatusCode),
-    #[fail(display = "An error while building an http data structure {:?}",_0)]
-    HttpBuilderError(#[cause] http::Error),
-}
-impl From<model::EmbedTooBigError> for Error{
-    fn from(e: model::EmbedTooBigError) -> Self{
-        Error::EmbedTooBig(e)
-    }
-}
-
-impl From<http::Error> for Error{
-    fn from(e: http::Error) -> Self{
-        Error::HttpBuilderError(e)
-    }
-}
-
-impl From<hyper::Error> for Error{
-    fn from(e: hyper::Error) -> Self{
-        Error::Http(e)
-    }
-}
-
-impl From<url::ParseError> for Error{
-    fn from(e: url::ParseError) -> Self{
-        Error::Url(e)
-    }
-}
-
-impl From<serde_json::Error> for Error{
-    fn from(e: serde_json::Error) -> Self{
-        Error::Json(e)
-    }
-}
-impl From<tokio::time::Error> for Error{
-    fn from(e: tokio::time::Error) -> Self{
-        Error::Timer(e)
-    }
+    #[error("An error while building an http data structure {0:?}")]
+    HttpBuilderError(#[from] http::Error),
 }
 
 #[cfg(test)]

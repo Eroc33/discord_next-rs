@@ -3,7 +3,7 @@ use std::{
     net::IpAddr,
     io::Write,
 };
-use failure::Fail;
+use thiserror::Error;
 
 pub const SAMPLE_RATE: u32 = 48000;
 
@@ -14,13 +14,13 @@ pub fn discovery_request(mut buf: [u8;70], ssrc: u32) -> Result<[u8;70],std::io:
     Ok(buf)
 }
 
-#[derive(Debug,Fail)]
+#[derive(Debug,Error)]
 pub enum DiscoveryPacketError{
-    #[fail(display = "Udp ip discovery response was not of the correct format")]
+    #[error("Udp ip discovery response was not of the correct format")]
     BadPacketFormat,
-    #[fail(display = "Ip discovery repsonse ip address was not utf8")]
+    #[error("Ip discovery response ip address was not utf8")]
     IpNotUtf8,
-    #[fail(display = "Ip discovery repsonse ip address was not a valid ip address")]
+    #[error("Ip discovery response ip address was not a valid ip address")]
     BadIp,
 }
 

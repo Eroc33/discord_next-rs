@@ -1,9 +1,9 @@
 #![recursion_limit="512"]
 extern crate tokio;
 extern crate serde_json;
-#[macro_use]
-extern crate failure;
 extern crate bitflags;
+
+use thiserror::Error;
 
 pub use discord_next_model as model;
 pub use discord_next_rest as rest_client;
@@ -17,29 +17,29 @@ pub use connection::*;
 
 pub (crate) const GATEWAY_VERSION: u8 = 6;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[fail(display = "An error occured while parsing a url {:?}",_0)]
-    Url(#[cause] url::ParseError),
-    #[fail(display = "An error occured during a websocket operation {:?}",_0)]
-    Ws(#[cause] tungstenite::error::Error),
-    #[fail(display = "An error occured during (de)serialization {:?}",_0)]
-    Json(#[cause] serde_json::Error),
-    #[fail(display = "An error with a timer operation for heartbeat {:?}",_0)]
-    HeartbeatTimer(#[cause] tokio::time::Error),
-    #[fail(display = "An error with a rest operation: {}",_0)]
-    RestError(#[cause] discord_next_rest::Error),
-    #[fail(display = "Gateway connection closed: {:?}",_0)]
+    #[error("An error occured while parsing a url {0:?}")]
+    Url(#[from] url::ParseError),
+    #[error("An error occured during a websocket operation {0:?}")]
+    Ws(#[from] tungstenite::error::Error),
+    #[error("An error occured during (de)serialization {0:?}")]
+    Json(#[from] serde_json::Error),
+    #[error("An error with a timer operation for heartbeat {0:?}")]
+    HeartbeatTimer(#[from] tokio::time::Error),
+    #[error("An error with a rest operation: {0}")]
+    RestError(#[from] discord_next_rest::Error),
+    #[error("Gateway connection closed: {0:?}")]
     ConnectionClosed(Option<model::CloseCode>),
     #[cfg(feature="voice")]
-    #[fail(display = "Voice connection closed: {:?}",_0)]
+    #[error("Voice connection closed: {0:?}")]
     VoiceConnectionClosed(Option<model::voice::CloseCode>),
-    #[fail(display = "Couldn't send on gateway connection. It is most likely closed: {:?}",_0)]
-    SendError(#[cause] futures::channel::mpsc::SendError),
-    #[fail(display = "IO error: {:?}",_0)]
-    Io(#[cause] std::io::Error),
-    #[fail(display = "FromPayloadError: {:?}",_0)]
-    FromPayload(#[cause] model::FromPayloadError),
+    #[error("Couldn't send on gateway connection. It is most likely closed: {0:?}")]
+    SendError(#[from] futures::channel::mpsc::SendError),
+    #[error("IO error: {0:?}")]
+    Io(#[from] std::io::Error),
+    #[error("FromPayloadError: {0:?}")]
+    FromPayload(#[from] model::FromPayloadError),
 }
 
 impl Error{
@@ -48,54 +48,6 @@ impl Error{
             Error::Ws(_) | Error::HeartbeatTimer(_) => false,
             _other => true,
         }
-    }
-}
-
-impl From<model::FromPayloadError> for Error{
-    fn from(e: model::FromPayloadError) -> Self{
-        Error::FromPayload(e)
-    }
-}
-
-impl From<std::io::Error> for Error{
-    fn from(e: std::io::Error) -> Self{
-        Error::Io(e)
-    }
-}
-
-impl From<futures::channel::mpsc::SendError> for Error{
-    fn from(e: futures::channel::mpsc::SendError) -> Self{
-        Error::SendError(e)
-    }
-}
-
-impl From<discord_next_rest::Error> for Error{
-    fn from(e: discord_next_rest::Error) -> Self{
-        Error::RestError(e)
-    }
-}
-
-impl From<url::ParseError> for Error{
-    fn from(e: url::ParseError) -> Self{
-        Error::Url(e)
-    }
-}
-
-impl From<tungstenite::error::Error> for Error{
-    fn from(e: tungstenite::error::Error) -> Self{
-        Error::Ws(e)
-    }
-}
-
-impl From<serde_json::Error> for Error{
-    fn from(e: serde_json::Error) -> Self{
-        Error::Json(e)
-    }
-}
-
-impl From<tokio::time::Error> for Error{
-    fn from(e: tokio::time::Error) -> Self{
-        Error::HeartbeatTimer(e)
     }
 }
 

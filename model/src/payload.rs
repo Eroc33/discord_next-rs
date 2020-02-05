@@ -1,20 +1,13 @@
 use serde_json;
 use serde::{Deserialize,Serialize};
-use failure::Fail;
+use thiserror::Error;
 
-#[derive(Debug,Fail)]
+#[derive(Debug,Error)]
 pub enum FromPayloadError{
-    #[fail(display = "Bad json for payload {:?}",_0)]
-    Json(#[cause] serde_json::Error),
-    #[fail(display = "Unknown opcode: {}",_0)]
+    #[error("Bad json for payload {0:?}")]
+    Json(#[from] serde_json::Error),
+    #[error("Unknown opcode: {0}")]
     UnknownOpcode(u64),
-}
-
-impl From<serde_json::Error> for FromPayloadError{
-    fn from(e: serde_json::Error) -> Self
-    {
-        FromPayloadError::Json(e)
-    }
 }
 
 #[derive(Debug,Deserialize,Serialize)]

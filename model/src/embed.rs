@@ -1,6 +1,6 @@
 use chrono::{DateTime,FixedOffset};
 use serde::{Deserialize,Serialize};
-use failure::Fail;
+use thiserror::Error;
 
 #[derive(Debug,Deserialize,Serialize,Default,Clone)]
 pub struct Embed{
@@ -296,14 +296,14 @@ impl EmbedField{
     }
 }
 
-#[derive(Debug,Fail)]
+#[derive(Debug,Error)]
 pub enum EmbedTooBigError{
-    #[fail(display="Tried to send an embed which was too big. {} was {} bytes when it should have been at most {} bytes",field,length,max)]
+    #[error("Tried to send an embed which was too big. {field} was {length} bytes when it should have been at most {max} bytes")]
     FieldTooBig{
         field: &'static str,
         length: usize,
         max: usize,
     },
-    #[fail(display="Tried to send an embed which was too big. maximum size is 6000 bytes, but the mebed was {} bytes",_0)]
+    #[error("Tried to send an embed which was too big. maximum size is 6000 bytes, but the embed was {0} bytes")]
     WholeTooBig(usize)
 }

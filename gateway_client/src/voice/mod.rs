@@ -23,77 +23,30 @@ use rust_sodium::crypto::secretbox;
 use tracing::*;
 use model::voice::udp::RTP_HEADER_LEN;
 use tracing_futures::Instrument as _;
+use thiserror::Error;
 
 pub mod ffmpeg;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[fail(display = "An error occured while parsing a url {:?}",_0)]
-    Url(#[cause] url::ParseError),
-    #[fail(display = "An error occured during a websocket operation {:?}",_0)]
-    Ws(#[cause] tungstenite::error::Error),
-    #[fail(display = "An error occured during (de)serialization {:?}",_0)]
-    Json(#[cause] serde_json::Error),
-    #[fail(display = "Voice connection closed: {:?}",_0)]
+    #[error("An error occured while parsing a url {0:?}")]
+    Url(#[from] url::ParseError),
+    #[error("An error occured during a websocket operation {0:?}")]
+    Ws(#[from] tungstenite::error::Error),
+    #[error("An error occured during (de)serialization {0:?}")]
+    Json(#[from] serde_json::Error),
+    #[error("Voice connection closed: {0:?}")]
     VoiceConnectionClosed(Option<model::voice::CloseCode>),
-    #[fail(display = "Couldn't send on gateway connection. It is most likely closed: {:?}",_0)]
-    SendError(#[cause] futures::channel::mpsc::SendError),
-    #[fail(display = "IO error: {:?}",_0)]
-    Io(#[cause] std::io::Error),
-    #[fail(display = "Ip discovery failed: {:?}",_0)]
-    IpDiscovery(#[cause] model::voice::udp::DiscoveryPacketError),
-    #[fail(display = "FromPayload error: {:?}",_0)]
-    FromPayload(#[cause] model::FromPayloadError),
-    #[fail(display = "Opus error: {:?}",_0)]
-    Opus(#[cause] opus::Error),
-}
-
-impl From<model::FromPayloadError> for Error{
-    fn from(e: model::FromPayloadError) -> Self{
-        Error::FromPayload(e)
-    }
-}
-
-impl From<model::voice::udp::DiscoveryPacketError> for Error{
-    fn from(e: model::voice::udp::DiscoveryPacketError) -> Self{
-        Error::IpDiscovery(e)
-    }
-}
-
-impl From<std::io::Error> for Error{
-    fn from(e: std::io::Error) -> Self{
-        Error::Io(e)
-    }
-}
-
-impl From<futures::channel::mpsc::SendError> for Error{
-    fn from(e: futures::channel::mpsc::SendError) -> Self{
-        Error::SendError(e)
-    }
-}
-
-impl From<url::ParseError> for Error{
-    fn from(e: url::ParseError) -> Self{
-        Error::Url(e)
-    }
-}
-
-impl From<tungstenite::error::Error> for Error{
-    fn from(e: tungstenite::error::Error) -> Self{
-        Error::Ws(e)
-    }
-}
-
-impl From<serde_json::Error> for Error{
-    fn from(e: serde_json::Error) -> Self{
-        Error::Json(e)
-    }
-}
-
-impl From<opus::Error> for Error{
-    fn from(e: opus::Error) -> Self{
-        Error::Opus(e)
-    }
+    #[error("Couldn't send on gateway connection. It is most likely closed: {0:?}")]
+    SendError(#[from] futures::channel::mpsc::SendError),
+    #[error("IO error: {0:?}")]
+    Io(#[from] std::io::Error),
+    #[error("Ip discovery failed: {0:?}")]
+    IpDiscovery(#[from] model::voice::udp::DiscoveryPacketError),
+    #[error("FromPayload error: {0:?}")]
+    FromPayload(#[from] model::FromPayloadError),
+    #[error("Opus error: {0:?}")]
+    Opus(#[from] opus::Error),
 }
 
 pub trait AudioStream{

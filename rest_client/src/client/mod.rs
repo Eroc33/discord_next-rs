@@ -5,19 +5,15 @@ use serde::{de::DeserializeOwned,Serialize};
 use itertools::Itertools;
 use url::Url;
 use std::collections::HashMap;
-use futures::stream::TryStreamExt;
 
 use tracing::*;
 
 mod ratelimiter;
 use ratelimiter::*;
 
-use hyper;
-use hyper_tls::HttpsConnector;
-
 #[derive(Clone)]
 pub struct Client{
-    http_client: hyper::Client<HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
+    http_client: reqwest::Client,
     bot_token: String,
     rate_limiter: RateLimiter,
     max_retries: u16
@@ -102,10 +98,8 @@ impl NewMessage{
 
 impl Client{
     pub fn new<S: Into<String>>(bot_token: S) -> Self{
-        //TODO: propagate error instead of using expect
-        let https_connector = hyper_tls::HttpsConnector::new();
         Self{
-            http_client: hyper::client::Client::builder().build(https_connector),
+            http_client: reqwest::Client::new(),
             bot_token: bot_token.into(),
             max_retries: 5,
             rate_limiter: Default::default(),
@@ -169,7 +163,7 @@ impl Client{
         where S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        self.execute_request(hyper::Method::DELETE, limit_url, url, hyper::Body::empty()).await?;
+        self.execute_request(reqwest::Method::DELETE, limit_url, url, reqwest::Body::from(&[] as &[u8])).await?;
         Ok(())
     }
     
@@ -178,9 +172,8 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        let res = self.execute_request(hyper::Method::GET, limit_url, url, hyper::Body::empty()).await?;
-        let bytes = res.into_body().map_ok(|body| body.to_vec()).try_concat().await?;
-        Ok(serde_json::from_slice(bytes.as_ref())?)
+        let res = self.execute_request(reqwest::Method::GET, limit_url, url, reqwest::Body::from(&[] as &[u8])).await?;
+        Ok(res.json().await?)
     }
 
     async fn post_json<T, S1, S2>(&self, limit_url: S1, url: S2, data: T) -> Result<(),Error>
@@ -188,7 +181,7 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        self.execute_request(hyper::Method::POST, limit_url, url, hyper::Body::from(serde_json::to_string(&data)?)).await?;
+        self.execute_request(reqwest::Method::POST, limit_url, url, reqwest::Body::from(serde_json::to_string(&data)?)).await?;
         Ok(())
     }
 
@@ -198,12 +191,11 @@ impl Client{
               S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
-        let res = self.execute_request(hyper::Method::POST, limit_url, url, hyper::Body::from(serde_json::to_string(&data)?)).await?;
-        let bytes = res.into_body().map_ok(|body| body.to_vec()).try_concat().await?;
-        Ok(serde_json::from_slice(bytes.as_ref())?)
+        let res = self.execute_request(reqwest::Method::POST, limit_url, url, reqwest::Body::from(serde_json::to_string(&data)?)).await?;
+        Ok(res.json().await?)
     }
 
-    async fn execute_request<S1, S2>(&self, method: hyper::Method, limit_url: S1, url: S2, body: hyper::Body) -> Result<hyper::Response<hyper::Body>,Error>
+    async fn execute_request<S1, S2>(&self, method: reqwest::Method, limit_url: S1, url: S2, body: reqwest::Body) -> Result<reqwest::Response,Error>
         where S1: Into<Option<String>> + 'static,
               S2: AsRef<str> + 'static,
     {
@@ -211,29 +203,31 @@ impl Client{
         let url = url.as_ref();
         let limit_url = limit_url.into().unwrap_or_else(|| url.to_owned());
 
-        let body_bytes = body.map_ok(|body| body.to_vec()).try_concat().await?;
+        let absolute_url = format!("{base_url}{url}",base_url=API_BASE,url=url);
+
+        let req_builder = self.http_client.request(method.clone(), &absolute_url);
+
+        let mut req_builder = self.set_headers(req_builder);
+        if body.as_bytes().map(|b| b.len()).unwrap_or(0) > 0{
+            req_builder = req_builder.header("Content-Type", "application/json");
+        }
+        let req_builder = req_builder.body(body);
+        
+        let req = req_builder.build()?;
+
+        trace!("request: {:?}",req);
+
 
         'retry_loop: loop{
             self.rate_limiter.enforce_limit(&limit_url).await?;
 
-            let absolute_url = format!("{base_url}{url}",base_url=API_BASE,url=url);
+            let send_req = req.try_clone().expect("rest client can only use non-stream bodies due to retry requirements");
 
-            let req_builder = hyper::Request::builder()
-                .method(method.clone())
-                .uri(&absolute_url);
-            let mut req_builder = self.set_headers(req_builder);
-            if body_bytes.len() > 0{
-                req_builder = req_builder.header("Content-Type", "application/json");
-            }
-            let req = req_builder.body(hyper::Body::from(body_bytes.clone()))?;
-
-            trace!("request: {:?}",req);
-
-            let res = self.http_client.request(req).await?;
+            let res = self.http_client.execute(send_req).await?;
 
             self.rate_limiter.update_limits(limit_url.clone(),res.headers());
 
-            if res.status() == hyper::StatusCode::TOO_MANY_REQUESTS{
+            if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS{
                 if retries >= self.max_retries{
                     return Err(Error::TooManyRetries(self.max_retries,url.to_owned()));
                 }
@@ -249,7 +243,7 @@ impl Client{
         }
     }
 
-    fn set_headers(&self, builder: http::request::Builder) -> http::request::Builder{
+    fn set_headers(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder{
         builder
             .header("Authorization", format!("Bot {bot_token}",bot_token=self.bot_token))
             .header("User-Agent", "discord-next-rs (github.com/Eroc33, 0.0.1-prototype)")
