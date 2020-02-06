@@ -38,9 +38,8 @@ impl EditMessage{
         }
     }
 
-    pub async fn update(self, channel_id: ChannelId, message_id: MessageId, client: &Client) -> Result<(),Error>{
-        client.update_message(channel_id, message_id, self).await?;
-        Ok(())
+    pub async fn update(self, channel_id: ChannelId, message_id: MessageId, client: &Client) -> Result<Message,Error>{
+        Ok(client.update_message(channel_id, message_id, self).await?)
     }
 
     pub fn with_embed<F>(mut self, f: F) -> Self
@@ -115,9 +114,8 @@ impl NewMessage{
         }
     }
 
-    pub async fn send(self, channel_id: ChannelId, client: &Client) -> Result<(),Error>{
-        client.send_message(channel_id,self).await?;
-        Ok(())
+    pub async fn send(self, channel_id: ChannelId, client: &Client) -> Result<Message,Error>{
+        Ok(client.send_message(channel_id,self).await?)
     }
 
     pub fn with_embed<F>(mut self, f: F) -> Self

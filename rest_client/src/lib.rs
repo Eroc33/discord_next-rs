@@ -8,6 +8,7 @@ pub use discord_next_model as model;
 
 mod client;
 pub use client::*;
+mod util;
 
 pub (crate) const API_BASE: &str = "https://discordapp.com/api/v6";
 
