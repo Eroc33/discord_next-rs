@@ -387,7 +387,10 @@ pub struct Identify{
     pub shard: Option<[u8;2]>,
     //initial presence information
     #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub presence: Option<UpdateStatus>
+    pub presence: Option<UpdateStatus>,
+    //enables dispatching of guild subscription events (presence and typing events)
+    #[serde(default,skip_serializing_if = "Option::is_none")]
+    pub guild_subscriptions: Option<bool>,
 }
 
 impl Identify{
@@ -399,6 +402,7 @@ impl Identify{
             large_threshold: Default::default(),
             shard: Default::default(),
             presence: Default::default(),
+            guild_subscriptions: Default::default(),
         }
     }
 }

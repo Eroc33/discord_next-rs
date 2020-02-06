@@ -20,6 +20,47 @@ pub struct Client{
 }
 
 #[derive(Default,Serialize)]
+pub struct EditMessage{
+    ///the message contents (up to 2000 characters)
+    /// #[serde(default,skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    ///embedded rich content
+    #[serde(default,skip_serializing_if = "Option::is_none")]
+    pub embed: Option<model::Embed>,
+    //TODO: flags
+}
+
+impl EditMessage{
+    pub fn text<S: Into<String>>(s:S) -> Self{
+        Self{
+            content: Some(s.into()),
+            ..Default::default()
+        }
+    }
+
+    pub async fn update(self, channel_id: ChannelId, message_id: MessageId, client: &Client) -> Result<(),Error>{
+        client.update_message(channel_id, message_id, self).await?;
+        Ok(())
+    }
+
+    pub fn with_embed<F>(mut self, f: F) -> Self
+        where F: FnOnce(&mut Embed)
+    {
+        self.embed = self.embed.take().or_else(|| Some(Default::default()));
+        f(self.embed.as_mut().expect("We just put a Some into it if it was empty"));
+        self
+    }
+
+    pub fn enforce_embed_limits(&self) -> Result<(),EmbedTooBigError>{
+        if let Some(embed) = self.embed.as_ref(){
+            embed.enforce_embed_limits()?;
+        }
+        Ok(())
+    }
+
+}
+
+#[derive(Default,Serialize)]
 pub struct NewMessage{
     ///the message contents (up to 2000 characters)
     pub content: String,
@@ -106,10 +147,16 @@ impl Client{
         }
     }
 
-    pub async fn send_message(&self,channel_id: ChannelId, new_message: NewMessage) -> Result<(),Error>{
+    pub async fn update_message(&self,channel_id: ChannelId, message_id: MessageId, edit_message: EditMessage) -> Result<Message,Error>{
+        edit_message.enforce_embed_limits()?;
+        let url = format!("/channels/{channel_id}/messages/{message_id}",channel_id=(channel_id.0).0,message_id=(message_id.0).0);
+        self.patch_return_json(None,url,edit_message).await
+    }
+
+    pub async fn send_message(&self,channel_id: ChannelId, new_message: NewMessage) -> Result<Message,Error>{
         new_message.enforce_embed_limits()?;
         let url = format!("/channels/{channel_id}/messages",channel_id=(channel_id.0).0);
-        self.post_json(None,url,new_message).await
+        self.post_return_json(None,url,new_message).await
     }
 
     pub async fn get_guilds(&self) -> Result<Vec<PartialGuild>,Error>{
@@ -192,6 +239,16 @@ impl Client{
               S2: AsRef<str> + 'static,
     {
         let res = self.execute_request(reqwest::Method::POST, limit_url, url, reqwest::Body::from(serde_json::to_string(&data)?)).await?;
+        Ok(res.json().await?)
+    }
+
+    async fn patch_return_json<R, T, S1, S2>(&self, limit_url: S1, url: S2, data: T) -> Result<R,Error>
+        where T: Serialize + 'static,
+              R: DeserializeOwned + Unpin + 'static,
+              S1: Into<Option<String>> + 'static,
+              S2: AsRef<str> + 'static,
+    {
+        let res = self.execute_request(reqwest::Method::PATCH, limit_url, url, reqwest::Body::from(serde_json::to_string(&data)?)).await?;
         Ok(res.json().await?)
     }
 

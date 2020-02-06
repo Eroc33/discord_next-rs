@@ -40,6 +40,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("FromPayloadError: {0:?}")]
     FromPayload(#[from] model::FromPayloadError),
+    #[error("UserError: {0:?}")]
+    Generic(#[from] anyhow::Error),
 }
 
 impl Error{

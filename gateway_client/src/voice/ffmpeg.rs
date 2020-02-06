@@ -35,7 +35,7 @@ fn try_fill_u8_from(r: &mut dyn Read, mut buf: &mut [u8]) -> Result<usize,io::Er
     Ok(buf_cap-buf_remaining)
 }
 
-//like byteorder ReadBytesExt::read_i16_into, but 
+//like byteorder ReadBytesExt::read_i16_into, but does not throw UnexpectedEof if the read does fill the buffer
 fn try_fill_i16_from<T: ByteOrder>(r: &mut dyn Read, dst: &mut[i16]) -> Result<usize, io::Error>{
     let read = {
         let buf = unsafe{ slice_to_u8_mut(dst) };
@@ -48,24 +48,31 @@ fn try_fill_i16_from<T: ByteOrder>(r: &mut dyn Read, dst: &mut[i16]) -> Result<u
     Ok(read/2)
 }
 
-pub struct FfmpegStream(::std::process::Child);
+pub struct FfmpegStream{
+    process: std::process::Child,
+    is_stereo: bool,
+}
 
 impl AudioStream for FfmpegStream {
 	fn read_frame(&mut self, buffer: &mut [i16]) -> Result<usize,io::Error>{
-		try_fill_i16_from::<LittleEndian>(self.0.stdout.as_mut().expect("missing stdout"),buffer)
-	}
+		try_fill_i16_from::<LittleEndian>(self.process.stdout.as_mut().expect("missing stdout"),buffer)
+    }
+    fn is_stereo(&self) -> bool{
+        self.is_stereo
+    }
 }
 
 impl FfmpegStream{
-    pub fn open<P: AsRef<OsStr>>(path: P) -> Result<Self,io::Error>
+    pub fn open<P: AsRef<OsStr>>(path: P, volume: Option<f32>, is_stereo: bool) -> Result<Self,io::Error>
     {
         use std::process::{Command, Stdio};
         let path = path.as_ref();
         let child = Command::new("ffmpeg")
             .arg("-i").arg(path)
             .args(&[
+                "-af", format!("volume={}",volume.unwrap_or(1.0)).as_str(),
                 "-f", "s16le",
-                "-ac", "1" ,
+                "-ac", if is_stereo { "2" } else { "1" } ,
                 "-ar", "48000",
                 "-acodec", "pcm_s16le",
                 "-"])
@@ -73,15 +80,18 @@ impl FfmpegStream{
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;
-        Ok(Self(child))
+        Ok(Self{
+            process: child,
+            is_stereo,
+        })
     }
 }
 
 impl Drop for FfmpegStream {
 	fn drop(&mut self) {
 		// If we can't kill it, it's dead already or out of our hands
-		let _ = self.0.kill();
+		let _ = self.process.kill();
 		// To avoid zombie processes, we must also wait on it
-		let _ = self.0.wait();
+		let _ = self.process.wait();
 	}
 }

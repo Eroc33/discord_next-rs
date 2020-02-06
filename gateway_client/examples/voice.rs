@@ -33,6 +33,10 @@ impl discord_next::voice::AudioStream for TestAudioStream{
         }
         Ok(buffer.len())
     }
+    fn is_stereo(&self) -> bool
+    {
+        false
+    }
 }
 
 const ACTIVATOR: &str = "!clip";
@@ -43,7 +47,9 @@ async fn main(){
     
     let vars = Arc::new(envy::from_env::<EnvVars>().unwrap());
 
-    let subscriber = tracing_subscriber::fmt::Subscriber::builder().finish();
+    let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(tracing::Level::TRACE)
+        .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
     let conn = discord_next::Connection::connect(vars.bot_token.clone()).await;
@@ -70,7 +76,8 @@ async fn main(){
 
                         tokio::spawn(async move{
                             let voice_conn = voice_conn_fut.await.unwrap();
-                            voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg").unwrap()).await;
+                            println!("Starting clip");
+                            voice_conn.run(discord_next::voice::ffmpeg::FfmpegStream::open("test.ogg",None,false).unwrap()).await;
                             println!("Voice conn completed");
                         });
                     }

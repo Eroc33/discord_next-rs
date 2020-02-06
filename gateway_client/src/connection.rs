@@ -2,6 +2,8 @@
 use std::{
     pin::Pin,
     convert::{TryFrom,TryInto},
+    collections::HashMap,
+    sync::{Arc},
 };
 use futures::{
     prelude::*,
@@ -13,10 +15,13 @@ use crate::{
     extensions::*,
     close_on_drop::CloseOnDrop,
     Error,
-    model
+    model::{self,UserId},
 };
 #[cfg(feature="voice")]
 use crate::voice::{VoiceStateStore,VoiceStateUpdateError};
+#[cfg(feature="voice")]
+use futures::lock::Mutex;
+
 use tracing::*;
 
 pub struct VoiceInfo{
@@ -39,6 +44,8 @@ pub struct Connection{
     #[cfg(feature="voice")]
     voice_update_store: VoiceStateStore,
     pub user: model::User,
+    #[cfg(feature="voice")]
+    pub voice_state: Arc<Mutex<HashMap<UserId,model::VoiceState>>>,
 }
 
 impl Connection{
@@ -75,13 +82,22 @@ impl Connection{
         match event{
             #[cfg(feature="voice")]
             model::ReceivableEvent::VoiceServerUpdate(voice_server_update) => {
+                trace!("updating voice info");
                 match self.update_voice_info(voice_server_update).await{
-                    Ok(_) => {},
+                    Ok(_) => {
+                        trace!("successfully updated")
+                    },
                     Err(_e) => {
                         warn!("Send error when updating voice state.")
                     }
                 }
             },
+            #[cfg(feature="voice")]
+            model::ReceivableEvent::VoiceStateUpdate(voice_state) => {
+                info!("got voice state for user {:?}", voice_state.user_id);
+                self.voice_state.lock().await.insert(voice_state.user_id,voice_state);
+                //TODO: *also* pass this event to the event handler
+            }
             other => {
                 let fut = f(self, other,client.clone());
                 tokio::spawn(async{
@@ -220,6 +236,8 @@ impl Connection{
             seq_num: None,
             #[cfg(feature="voice")]
             voice_update_store: Default::default(),
+            #[cfg(feature="voice")]
+            voice_state: Default::default(),
         })
     }
 }
