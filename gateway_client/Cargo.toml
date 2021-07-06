@@ -5,7 +5,7 @@ name = "discord_next"
 version = "0.1.0"
 
 [features]
-default = ["voice"]
+default = []
 voice = ["rust_sodium","opus","discord_next_model/voice"]
 
 [dependencies]

@@ -1,7 +1,7 @@
-#![recursion_limit="512"]
-extern crate tokio;
-extern crate serde_json;
+#![recursion_limit = "512"]
 extern crate bitflags;
+extern crate serde_json;
+extern crate tokio;
 
 use thiserror::Error;
 
@@ -9,13 +9,13 @@ pub use discord_next_model as model;
 pub use discord_next_rest as rest_client;
 
 mod close_on_drop;
-mod extensions;
-#[cfg(feature="voice")]
-pub mod voice;
 mod connection;
+mod extensions;
+#[cfg(feature = "voice")]
+pub mod voice;
 pub use connection::*;
 
-pub (crate) const GATEWAY_VERSION: u8 = 6;
+pub(crate) const GATEWAY_VERSION: u8 = 8;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -31,7 +31,7 @@ pub enum Error {
     RestError(#[from] discord_next_rest::Error),
     #[error("Gateway connection closed: {0:?}")]
     ConnectionClosed(Option<model::CloseCode>),
-    #[cfg(feature="voice")]
+    #[cfg(feature = "voice")]
     #[error("Voice connection closed: {0:?}")]
     VoiceConnectionClosed(Option<model::voice::CloseCode>),
     #[error("Couldn't send on gateway connection. It is most likely closed: {0:?}")]
@@ -44,9 +44,9 @@ pub enum Error {
     Generic(#[from] anyhow::Error),
 }
 
-impl Error{
-    pub fn is_recoverable(&self) -> bool{
-        match self{
+impl Error {
+    pub fn is_recoverable(&self) -> bool {
+        match self {
             Error::Ws(_) | Error::HeartbeatTimer(_) => false,
             _other => true,
         }

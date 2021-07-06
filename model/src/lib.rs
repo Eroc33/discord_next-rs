@@ -1,8 +1,8 @@
-use chrono::{DateTime,FixedOffset};
+use chrono::{DateTime, FixedOffset};
 use serde_json;
 
-use serde::{Deserialize,Serialize};
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 mod payload;
 pub use payload::*;
@@ -11,25 +11,27 @@ pub use ids::*;
 #[macro_use]
 mod gateway;
 pub use gateway::*;
-pub mod voice;
 mod embed;
+pub mod voice;
 pub use embed::*;
 #[macro_use]
 mod enum_number;
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct ConnectionProperties{
-    #[serde(rename="$os")]
+mod custom_serialization;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ConnectionProperties {
+    #[serde(rename = "$os")]
     pub os: String,
-    #[serde(rename="$browser")]
+    #[serde(rename = "$browser")]
     pub browser: String,
-    #[serde(rename="$device")]
+    #[serde(rename = "$device")]
     pub device: String,
 }
 
-impl Default for ConnectionProperties{
-    fn default() -> Self{
-        ConnectionProperties{
+impl Default for ConnectionProperties {
+    fn default() -> Self {
+        ConnectionProperties {
             os: ::std::env::consts::OS.into(),
             browser: "discord-next-rust".into(),
             device: "discord-next-rust".into(),
@@ -37,8 +39,8 @@ impl Default for ConnectionProperties{
     }
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub enum Status{
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Status {
     #[serde(rename = "online")]
     Online,
     //do not disturb`
@@ -54,67 +56,67 @@ pub enum Status{
     Offline,
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct UpdateStatus{
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateStatus {
     //unix time (in milliseconds) of when the client went idle, or null if the client is not idle
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<u64>,
     //the user's new activity
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game: Option<Activity>,
     //the user's new status
     pub status: Status,
     //whether or not the client is afk
-    pub afk:	bool
+    pub afk: bool,
 }
 
-impl UpdateStatus{
-    pub fn new_basic(status: Status, afk: bool) -> Self{
-        UpdateStatus{
+impl UpdateStatus {
+    pub fn new_basic(status: Status, afk: bool) -> Self {
+        UpdateStatus {
             since: Default::default(),
             game: Default::default(),
             status,
-            afk
+            afk,
         }
     }
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct Activity{
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Activity {
     //the activity's name
     pub name: String,
     //activity type
     #[serde(rename = "type")]
     pub typ: ActivityType,
     //is validated when type is 1
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     //unix timestamps for start and/or end of the game
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamps: Option<Timestamps>,
     //application id for the game
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application_id: Option<Snowflake>,
     //what the player is currently doing
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
     //the user's current party status
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     //information for the current party of the player
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub party:	Option<Party>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub party: Option<Party>,
     //images for the presence and their hover texts
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub assets:	Option<Assets>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<Assets>,
     ///secrets for Rich Presence joining and spectating
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secrets: Option<ActivitySecrets>,
     ///whether or not the activity is an instanced game session
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance: Option<bool>,
     ///activity flags, describes what the payload includes
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flags: Option<ActivityFlags>,
 }
 
@@ -136,147 +138,156 @@ bitflags! {
     }
 }
 
-impl<'de> serde::de::Deserialize<'de> for ActivityFlags{
+impl<'de> serde::de::Deserialize<'de> for ActivityFlags {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::de::Deserializer<'de>
+        D: serde::de::Deserializer<'de>,
     {
-        Ok(ActivityFlags::from_bits_truncate(u32::deserialize(deserializer)?))
+        Ok(ActivityFlags::from_bits_truncate(u32::deserialize(
+            deserializer,
+        )?))
     }
 }
 
 impl serde::ser::Serialize for ActivityFlags {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::ser::Serializer
+        S: serde::ser::Serializer,
     {
         serializer.serialize_u32(self.bits())
     }
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct ActivitySecrets{
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ActivitySecrets {
     ///the secret for joining a party
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub join: Option<String>,
     ///the secret for spectating a game
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spectate: Option<String>,
     ///the secret for a specific instanced match
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    #[serde(rename="match")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "match")]
     pub match_secret: Option<String>,
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct Timestamps{
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Timestamps {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start: Option<u64>,
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<u64>,
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct Party{
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Party {
     //the id of the party
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     //tuple of two integers (current_size, max_size) used to show the party's current and maximum size
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub size: Option<(u64,u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<(u64, u64)>,
 }
 
-#[derive(Debug,Deserialize,Serialize)]
-pub struct Assets{
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Assets {
     //the id for a large asset of the activity, usually a snowflake
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub large_image: Option<String>,
     //text displayed when hovering over the large image of the activity
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub large_text: Option<String>,
     //the id for a small asset of the activity, usually a snowflake
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub small_image: Option<String>,
     //text displayed when hovering over the small image of the activity
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub small_text: Option<String>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct UnavailableGuild{
+#[derive(Debug, Deserialize)]
+pub struct UnavailableGuild {
     pub id: GuildId,
-    pub unavailable: bool
+    pub unavailable: bool,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct Channel{
+#[derive(Debug, Deserialize)]
+pub struct Channel {
     //the id of this channel
     pub id: ChannelId,
     //the type of channel
     #[serde(rename = "type")]
     pub typ: u64,
     //the id of the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<GuildId>,
     //sorting position of the channel
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<u64>,
     //explicit permission overwrites for members and roles
-    #[serde(default,skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permission_overwrites: Vec<Overwrite>,
     //the name of the channel (2-100 characters)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     //the channel topic (0-1024 characters)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
     //if the channel is nsfw
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nsfw: Option<bool>,
     //the id of the last message sent in this channel (may not point to an existing or valid message)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message_id: Option<MessageId>,
     //the bitrate (in bits) of the voice channel
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitrate: Option<u64>,
     //the user limit of the voice channel
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_limit: Option<u64>,
     //the recipients of the DM
-    #[serde(default,skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recipients: Vec<User>,
     //icon hash
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     //id of the DM creator
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<UserId>,
     //application id of the group DM creator if it is bot-created
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application_id: Option<Snowflake>,
     //id of the parent category for a channel
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<ChannelId>,
     //when the last pinned message was pinned
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_pin_timestamp: Option<DateTime<FixedOffset>>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct Overwrite{
+enum_number!(OverwriteType{
+    Role = 0,
+    Member = 1,
+});
+
+#[derive(Debug, Deserialize)]
+pub struct Overwrite {
     //role or user id
     pub id: Snowflake,
     //either "role" or "member"
     #[serde(rename = "type")]
-    pub typ: String,
+    pub typ: OverwriteType,
     //permission bit set
+    #[serde(deserialize_with = "crate::custom_serialization::u64_from_string")]
     pub allow: u64,
     //permission bit set
+    #[serde(deserialize_with = "crate::custom_serialization::u64_from_string")]
     pub deny: u64,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct User{
+#[derive(Debug, Deserialize, Clone)]
+pub struct User {
     //the user's id
     pub id: UserId,
     //the user's username, not unique across the platform
@@ -284,51 +295,51 @@ pub struct User{
     //the user's 4-digit discord-tag
     pub discriminator: String,
     //the user's avatar hash
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
     //whether the user belongs to an OAuth2 application
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bot: Option<bool>,
     //whether the user has two factor enabled on their account
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mfa_enabled: Option<bool>,
     //whether the email on this account has been verified
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified: Option<bool>,
     //the user's email
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct PartialUser{
+#[derive(Debug, Deserialize)]
+pub struct PartialUser {
     //the user's id
     pub id: UserId,
     //the user's username, not unique across the platform
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
     //the user's 4-digit discord-tag
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discriminator: Option<String>,
     //the user's avatar hash
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
     //whether the user belongs to an OAuth2 application
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bot: Option<bool>,
     //whether the user has two factor enabled on their account
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mfa_enabled: Option<bool>,
     //whether the email on this account has been verified
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified: Option<bool>,
     //the user's email
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct PartialGuild{
+#[derive(Debug, Deserialize)]
+pub struct PartialGuild {
     ///guild id
     pub id: GuildId,
     ///guild name (2-100 characters)
@@ -336,15 +347,15 @@ pub struct PartialGuild{
     ///icon hash
     pub icon: Option<String>,
     ///whether or not the user is the owner of the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<bool>,
     ///total permissions for the user in the guild (does not include channel overrides)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Permissions>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct Guild{
+#[derive(Debug, Deserialize)]
+pub struct Guild {
     ///guild id
     pub id: GuildId,
     ///guild name (2-100 characters)
@@ -354,12 +365,12 @@ pub struct Guild{
     ///splash hash
     pub splash: Option<String>,
     ///whether or not the user is the owner of the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<bool>,
     ///id of owner
     pub owner_id: UserId,
     ///total permissions for the user in the guild (does not include channel overrides)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Permissions>,
     ///voice region id for the guild
     pub region: String,
@@ -367,12 +378,6 @@ pub struct Guild{
     pub afk_channel_id: Option<ChannelId>,
     ///afk timeout in seconds
     pub afk_timeout: u64,
-    ///is this guild embeddable (e.g. widget)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub embed_enabled: Option<bool>,
-    ///if not null, the channel id that the widget will generate an invite to
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub embed_channel_id: Option<ChannelId>,
     ///verification level required for the guild
     pub verification_level: u64,
     ///default message notifications level
@@ -390,36 +395,36 @@ pub struct Guild{
     ///application id of the guild creator if it is bot-created
     pub application_id: Option<Snowflake>,
     ///whether or not the server widget is enabled
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_enabled: Option<bool>,
     ///the channel id for the server widget
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub widget_channel_id: Option<ChannelId>,
     ///the id of the channel to which system messages are sent
     pub system_channel_id: Option<ChannelId>,
     ///when this guild was joined at
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joined_at: Option<DateTime<FixedOffset>>,
     ///whether this is considered a large guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub large: Option<bool>,
     ///is this guild unavailable
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unavailable: Option<bool>,
     ///total number of members in this guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member_count: Option<u64>,
     ///(without the guild_id key)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice_states: Option<Vec<VoiceState>>,
     ///users in the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<GuildMember>>,
     ///channels in the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channels: Option<Vec<Channel>>,
     ///presences of the users in the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presences: Option<Vec<PresenceUpdate>>,
 }
 
@@ -486,26 +491,28 @@ bitflags! {
     }
 }
 
-impl<'de> serde::de::Deserialize<'de> for Permissions{
+impl<'de> serde::de::Deserialize<'de> for Permissions {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::de::Deserializer<'de>
+        D: serde::de::Deserializer<'de>,
     {
-        Ok(Permissions::from_bits_truncate(u64::deserialize(deserializer)?))
+        Ok(Permissions::from_bits_truncate(
+            custom_serialization::u64_from_string(deserializer)?,
+        ))
     }
 }
 
 impl serde::ser::Serialize for Permissions {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::ser::Serializer
+        S: serde::ser::Serializer,
     {
         serializer.serialize_u64(self.bits())
     }
 }
 
-#[derive(Debug,Deserialize)]
-pub struct Role{
+#[derive(Debug, Deserialize)]
+pub struct Role {
     ///role id
     pub id: RoleId,
     ///role name
@@ -524,35 +531,35 @@ pub struct Role{
     pub mentionable: bool,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct Emoji{
+#[derive(Debug, Deserialize, Clone)]
+pub struct Emoji {
     ///emoji id
     pub id: Option<Snowflake>,
     ///emoji name
     pub name: String,
     ///roles this emoji is whitelisted to
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub roles: Option<Vec<RoleId>>,
     ///user that created this emoji
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
     ///whether this emoji must be wrapped in colons
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub require_colons: Option<bool>,
     ///whether this emoji is managed
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub managed: Option<bool>,
     ///whether this emoji is animated
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animated: Option<bool>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct GuildMember{
+#[derive(Debug, Deserialize)]
+pub struct GuildMember {
     ///the user this guild member represents
     pub user: User,
     ///this users guild nickname (if one is set)
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nick: Option<String>,
     ///array of role object ids
     pub roles: Vec<RoleId>,
@@ -564,17 +571,17 @@ pub struct GuildMember{
     pub mute: bool,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct VoiceState{
+#[derive(Debug, Deserialize)]
+pub struct VoiceState {
     ///the guild id this voice state is for
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<GuildId>,
     ///the channel id this user is connected to
     pub channel_id: Option<ChannelId>,
     ///the user id this voice state is for
     pub user_id: UserId,
     ///the guild member this voice state is for
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<GuildMember>,
     ///the session id for this voice state
     pub session_id: String,
@@ -590,48 +597,58 @@ pub struct VoiceState{
     pub suppress: bool,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct PresenceUpdate{
+#[derive(Debug, Deserialize)]
+pub struct PresenceUpdate {
     ///the user presence is being updated for
     pub user: PartialUser,
-    ///roles this user is in
-    #[serde(default,skip_serializing_if = "Option::is_none")]
-    pub roles: Option<Vec<RoleId>>,
-    ///null, or the user's current activity
-    pub game: Option<Activity>,
     ///id of the guild
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<GuildId>,
     ///the user's status
     pub status: Status,
     ///user's current activities
     pub activities: Vec<Activity>,
+    ///user's platform-dependent status
+    pub client_status: ClientStatus,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct PartialGuildMember{
+#[derive(Debug, Deserialize)]
+pub struct ClientStatus {
+    ///the user's status set for an active desktop (Windows, Linux, Mac) application session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    desktop: Option<String>,
+    ///the user's status set for an active mobile (iOS, Android) application session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mobile: Option<String>,
+    ///the user's status set for an active web (browser, bot account) application session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    web: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PartialGuildMember {
     //TODO: figure out which fields are given
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct Mention{
+#[derive(Debug, Deserialize, Clone)]
+pub struct Mention {
     //TODO: figure out which fields are given
-    //"user object, with an additional partial member field"
+//"user object, with an additional partial member field"
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct Message{
+#[derive(Debug, Deserialize, Clone)]
+pub struct Message {
     ///id of the message
     pub id: MessageId,
     ///id of the channel the message was sent in
     pub channel_id: ChannelId,
     ///id of the guild the message was sent in
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<GuildId>,
     ///the author of this message (not guaranteed to be a valid user if the message was created by a webhook)
     pub author: User,
     ///member properties for this message's author
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<PartialGuildMember>,
     ///contents of the message
     pub content: String,
@@ -652,29 +669,29 @@ pub struct Message{
     ///any embedded content
     pub embeds: Vec<Embed>,
     ///reactions to the message
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reactions: Option<Vec<Reaction>>,
     ///used for validating a message was sent
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nonce: Option<Option<Snowflake>>,
     ///whether this message is pinned
     pub pinned: bool,
     ///if the message is generated by a webhook, this is the webhook's id
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub webhook_id: Option<Snowflake>,
     ///type of message
-    #[serde(rename="type")]
+    #[serde(rename = "type")]
     pub msg_type: MessageType,
     ///sent with Rich Presence-related chat embeds
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<MessageActivity>,
     ///sent with Rich Presence-related chat embeds
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application: Option<MessageApplication>,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct Reaction{
+#[derive(Debug, Deserialize, Clone)]
+pub struct Reaction {
     ///times this emoji has been used to react
     pub count: u64,
     ///whether the current user reacted using this emoji
@@ -683,8 +700,8 @@ pub struct Reaction{
     pub emoji: Emoji,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct Attachment{
+#[derive(Debug, Deserialize, Clone)]
+pub struct Attachment {
     ///attachment id
     pub id: Snowflake,
     ///name of file attached
@@ -701,13 +718,13 @@ pub struct Attachment{
     pub width: Option<u64>,
 }
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct MessageActivity{
+#[derive(Debug, Deserialize, Clone)]
+pub struct MessageActivity {
     ///type of message activity
-    #[serde(rename="type")]
+    #[serde(rename = "type")]
     pub activity_type: MessageActivityType,
     ///party_id from a Rich Presence event
-    #[serde(default,skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub party_id: Option<String>,
 }
 
@@ -718,8 +735,8 @@ enum_number!(MessageActivityType{
     JoinRequest = 5,
 });
 
-#[derive(Debug,Deserialize,Clone)]
-pub struct MessageApplication{
+#[derive(Debug, Deserialize, Clone)]
+pub struct MessageApplication {
     ///id of the application
     pub id: Snowflake,
     ///id of the embed's image asset
@@ -742,3 +759,53 @@ enum_number!(MessageType{
     ChannePinnedMessage = 6,
     GuildMmeberJoin = 7,
 });
+
+bitflags! {
+    pub struct IntentFlags: u32 {
+        const GUILDS                   = (1 << 0);
+        /// This is a privileged intent
+        const GUILD_MEMBERS            = (1 << 1);
+        const GUILD_BANS               = (1 << 2);
+        const GUILD_EMOJIS             = (1 << 3);
+        const GUILD_INTEGRATIONS       = (1 << 4);
+        const GUILD_WEBHOOKS           = (1 << 5);
+        const GUILD_INVITES	           = (1 << 6);
+        const GUILD_VOICE_STATES       = (1 << 7);
+        /// This is a privileged intent
+        const GUILD_PRESENCES          = (1 << 8);
+        const GUILD_MESSAGES           = (1 << 9);
+        const GUILD_MESSAGE_REACTIONS  = (1 << 10);
+        const GUILD_MESSAGE_TYPING     = (1 << 11);
+        const DIRECT_MESSAGES          = (1 << 12);
+        const DIRECT_MESSAGE_REACTIONS = (1 << 13);
+        const DIRECT_MESSAGE_TYPING	   = (1 << 14);
+
+        const KNOWN_PRIVILEGED = Self::GUILD_MEMBERS.bits | Self::GUILD_PRESENCES.bits;
+    }
+}
+
+impl Default for IntentFlags {
+    fn default() -> Self {
+        Self::all() - Self::KNOWN_PRIVILEGED
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntentFlags {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        Ok(IntentFlags::from_bits_truncate(u32::deserialize(
+            deserializer,
+        )?))
+    }
+}
+
+impl serde::ser::Serialize for IntentFlags {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_u32(self.bits())
+    }
+}
