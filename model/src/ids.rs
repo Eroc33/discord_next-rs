@@ -6,54 +6,28 @@ pub struct Snowflake(
     #[serde(deserialize_with = "crate::custom_serialization::u64_from_string")] pub u64,
 );
 
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct ChannelId(pub Snowflake);
+macro_rules! define_typed_ids {
+    ($($name:ident,)+) => {
+        $(
+            #[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+            #[serde(transparent)]
+            pub struct $name(pub Snowflake);
+        )+
+    };
+}
 
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct RoleId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct GuildId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct MessageId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct UserId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct ApplicationId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct StickerId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct EmojiId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct TeamId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct ApplicationCommandId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct StageInstanceId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct WebhookId(pub Snowflake);
-
-#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(transparent)]
-pub struct InteractionId(pub Snowflake);
+define_typed_ids! {
+    ChannelId,
+    RoleId,
+    GuildId,
+    MessageId,
+    UserId,
+    ApplicationId,
+    StickerId,
+    EmojiId,
+    TeamId,
+    ApplicationCommandId,
+    StageInstanceId,
+    WebhookId,
+    InteractionId,
+}
