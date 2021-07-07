@@ -25,3 +25,27 @@ pub struct MessageId(pub Snowflake);
 #[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
 #[serde(transparent)]
 pub struct UserId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct ApplicationId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct StickerId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct EmojiId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct TeamId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct ApplicationCommandId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct StageInstanceId(pub Snowflake);

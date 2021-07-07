@@ -283,6 +283,20 @@ pub enum ReceivableEvent {
     VoiceServerUpdate(VoiceServerUpdate),
     //guild channel webhook was created, update, or deleted
     WebhooksUpdate(WebhooksUpdate),
+    //Sent when a new Slash Command is created, relevant to the current user. The inner payload is an ApplicationCommand object, with an optional extra guild_id key.
+    ApplicationCommandCreate(ApplicationCommand),
+    //Sent when a Slash Command relevant to the current user is updated. The inner payload is an ApplicationCommand object, with an optional extra guild_id key.
+    ApplicationCommandUpdate(ApplicationCommand),
+    //Sent when a Slash Command relevant to the current user is deleted. The inner payload is an ApplicationCommand object, with an optional extra guild_id key.
+    ApplicationCommandDelete(ApplicationCommand),
+    //Sent when a user in a guild uses a Slash Command. Inner payload is an Interaction.
+    InteractionCreate(Interaction),
+    //Sent when a Stage instance is created (i.e. the Stage is now "live"). Inner payload is a Stage instance
+    StageInstanceCreate(StageInstance),
+    //Sent when a Stage instance has been updated. Inner payload is a Stage instance
+    StageInstanceUpdate(StageInstance),
+    //Sent when a Stage instance has been deleted (i.e. the Stage has been closed). Inner payload is a Stage instance
+    StageInstanceDelete(StageInstance),
     //Holds unkown events for limited forwards compatibility
     Unknown {
         name: String,
