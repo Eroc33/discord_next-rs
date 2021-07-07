@@ -49,3 +49,11 @@ pub struct ApplicationCommandId(pub Snowflake);
 #[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
 #[serde(transparent)]
 pub struct StageInstanceId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct WebhookId(pub Snowflake);
+
+#[derive(Hash, Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(transparent)]
+pub struct InteractionId(pub Snowflake);
