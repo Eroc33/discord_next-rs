@@ -431,6 +431,13 @@ impl ReceivableEvent {
                 "VOICE_STATE_UPDATE" => VoiceStateUpdate,
                 "VOICE_SERVER_UPDATE" => VoiceServerUpdate,
                 "WEBHOOKS_UPDATE" => WebhooksUpdate,
+                "APPLICATION_COMMAND_CREATE" => ApplicationCommandCreate,
+                "APPLICATION_COMMAND_UPDATE" => ApplicationCommandUpdate,
+                "APPLICATION_COMMAND_DELETE" => ApplicationCommandDelete,
+                "INTERACTION_CREATE" => InteractionCreate,
+                "STAGE_INSTANCE_CREATE" => StageInstanceCreate,
+                "STAGE_INSTANCE_UPDATE" => StageInstanceUpdate,
+                "STAGE_INSTANCE_DELETE" => StageInstanceDelete,
             }
         }
     }

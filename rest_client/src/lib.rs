@@ -10,20 +10,20 @@ mod client;
 pub use client::*;
 pub mod util;
 
-pub (crate) const API_BASE: &str = "https://discordapp.com/api/v6";
+pub(crate) const API_BASE: &str = "https://discordapp.com/api/v9";
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("An http error occurred {0:?}")]
-    Http (#[from] reqwest::Error),
+    Http(#[from] reqwest::Error),
     #[error("An error occured while parsing a url {0:?}")]
     Url(#[from] url::ParseError),
     #[error("An error occured during (de)serialization {0:?}")]
     Json(#[from] serde_json::Error),
-    #[error("An embed was too big {:?}",_0)]
+    #[error("An embed was too big {:?}", _0)]
     EmbedTooBig(#[from] model::EmbedTooBigError),
     #[error("Was rate limited too many times (>={0}) while executing: {1}")]
-    TooManyRetries(u16,String),
+    TooManyRetries(u16, String),
     #[error("An error with a timer operation for ratelimiting {0:?}")]
     Timer(#[from] tokio::time::Error),
     #[error("A non success response code was returned from an http request: {0:?}")]

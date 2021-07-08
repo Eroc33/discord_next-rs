@@ -406,7 +406,9 @@ impl Client {
             }
 
             if !res.status().is_success() {
-                return Err(Error::UnsuccessfulHttp(res.status()));
+                let status = res.status();
+                error!("Request failed with result: {:?}", res.text().await?);
+                return Err(Error::UnsuccessfulHttp(status));
             }
 
             return Ok(res);
@@ -434,5 +436,54 @@ impl Client {
         Ok(Url::parse(
             format!("{}?v={}&encoding=json", res.url, version).as_str(),
         )?)
+    }
+
+    pub async fn get_application_commands(
+        &self,
+        application_id: ApplicationId,
+    ) -> Result<Vec<ApplicationCommand>, Error> {
+        let url = format!(
+            "/applications/{application_id}/commands",
+            application_id = (application_id.0).0
+        );
+        self.get_json(None, url).await
+    }
+
+    pub async fn create_application_command(
+        &self,
+        application_id: ApplicationId,
+        command: NewApplicationCommand,
+    ) -> Result<ApplicationCommand, Error> {
+        let url = format!(
+            "/applications/{application_id}/commands",
+            application_id = (application_id.0).0
+        );
+        self.post_return_json(None, url, command).await
+    }
+
+    pub async fn delete_application_command(
+        &self,
+        application_id: ApplicationId,
+        command_id: ApplicationCommandId,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "/applications/{application_id}/commands/{command_id}",
+            application_id = (application_id.0).0,
+            command_id = (command_id.0).0,
+        );
+        self.delete(None, url).await
+    }
+
+    pub async fn create_interaction_response(
+        &self,
+        interaction: &Interaction,
+        response: InteractionResponse,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "/interactions/{interaction_id}/{interaction_token}/callback",
+            interaction_id = (interaction.id.0).0,
+            interaction_token = interaction.token,
+        );
+        self.post_json(None, url, response).await
     }
 }

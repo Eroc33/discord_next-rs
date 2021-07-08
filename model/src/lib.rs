@@ -307,7 +307,7 @@ pub struct Overwrite {
     pub deny: u64,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct User {
     //the user's id
     pub id: UserId,
@@ -552,7 +552,7 @@ pub struct Role {
     pub mentionable: bool,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Emoji {
     ///emoji id
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -960,7 +960,7 @@ enum_number!(ChannelType{
     GuildStageVoice = 13,
 });
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MessageComponent {
     ///component type
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "type")]
@@ -1171,7 +1171,26 @@ pub struct ApplicationCommand {
     pub default_permission: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
+pub struct NewApplicationCommand {
+    ///unique id of the parent application
+    pub application_id: ApplicationId,
+    ///guild id of the command, if not global
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guild_id: Option<GuildId>,
+    ///1-32 lowercase character name matching ^[\w-]{1,32}$
+    pub name: String,
+    ///1-100 character description
+    pub description: String,
+    ///the parameters for the command
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<ApplicationCommandOption>>,
+    ///whether the command is enabled by default when the app is added to a guild
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_permission: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApplicationCommandOption {
     ///value of application command option type
     #[serde(rename = "type")]
@@ -1210,7 +1229,7 @@ pub enum StringOrInt {
     Int(i64),
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ApplicationCommandOptionChoice {
     ///1-100 character choice name
     pub name: String,
@@ -1264,9 +1283,11 @@ pub struct ApplicationCommandInteractionData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<Vec<ApplicationCommandInteractionDataOption>>,
     ///for components, the custom_id of the component
-    pub custom_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_id: Option<String>,
     ///for components, the type of the component
-    pub component_type: MessageComponentType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_type: Option<MessageComponentType>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -1290,11 +1311,19 @@ pub struct ApplicationCommandInteractionDataOption {
     pub name: String,
     ///value of application command option type
     #[serde(rename = "type")]
-    pub typ: i64,
+    pub typ: ApplicationCommandOptionType,
     ///the value of the pair
-    pub value: Option<ApplicationCommandOptionType>,
+    pub value: Option<ApplicationCommandValue>,
     ///present if this option is a group or subcommand
     pub options: Option<Vec<ApplicationCommandInteractionDataOption>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum ApplicationCommandValue {
+    String(String),
+    Integer(i64),
+    Boolean(bool),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -1312,7 +1341,102 @@ pub struct StageInstance {
     ///Whether or not Stage discovery is disabled
     pub discoverable_disabled: bool,
 }
+
 enum_number!(PrivacyLevel{
     Public = 1,
     GuildOnly = 2,
 });
+
+#[derive(Debug, Serialize, Clone)]
+pub struct InteractionResponse {
+    ///the type of response
+    #[serde(rename = "type")]
+    pub typ: InteractionCallbackType,
+    ///an optional response message
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<InteractionApplicationCommandCallbackData>,
+}
+
+enum_number!(InteractionCallbackType{
+    Pong = 1,
+    ChannelMessageWithSource = 4,
+    DeferredChannelMessageWithSource = 5,
+    DeferredUpdateMessage = 6,
+    UpdateMessage = 7,
+});
+
+#[derive(Debug, Serialize, Clone)]
+pub struct InteractionApplicationCommandCallbackData {
+    ///is the response TTS
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tts: Option<bool>,
+    ///message content
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    ///supports up to 10 embeds
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embeds: Option<Vec<Embed>>,
+    ///allowed mentions object
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_mentions: Option<AllowedMentions>,
+    ///interaction application command callback data flags
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flags: Option<InteractionApplicationCommandCallbackDataFlags>,
+    ///message components
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub components: Option<Vec<MessageComponent>>,
+}
+
+bitflags! {
+    pub struct InteractionApplicationCommandCallbackDataFlags: u32 {
+        const EPHEMERAL	   = (1 << 6);
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for InteractionApplicationCommandCallbackDataFlags {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        Ok(Self::from_bits_truncate(u32::deserialize(deserializer)?))
+    }
+}
+
+impl serde::ser::Serialize for InteractionApplicationCommandCallbackDataFlags {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_u32(self.bits())
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AllowedMentions {
+    ///An array of allowed mention types to parse from the content.
+    pub parse: Vec<AllowedMentionTypes>,
+    ///Array of role_ids to mention (Max size of 100)
+    pub roles: Vec<RoleId>,
+    ///Array of user_ids to mention (Max size of 100)
+    pub users: Vec<UserId>,
+    ///For replies, whether to mention the author of the message being replied to (default false)
+    pub replied_user: bool,
+}
+
+impl AllowedMentions {
+    pub fn none() -> Self {
+        Self {
+            parse: vec![],
+            roles: vec![],
+            users: vec![],
+            replied_user: false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub enum AllowedMentionTypes {
+    Roles,
+    Users,
+    Everyone,
+}
