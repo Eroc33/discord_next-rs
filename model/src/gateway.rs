@@ -569,7 +569,8 @@ pub struct GuildMemberUpdate {
     ///the user
     user: User,
     ///nickname of the user in the guild
-    nick: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nick: Option<String>,
 }
 ///response to Request Guild Members
 #[derive(Debug, Deserialize)]
