@@ -310,6 +310,22 @@ impl Client {
         Ok(())
     }
 
+    async fn patch_json<T, S1, S2>(&self, limit_url: S1, url: S2, data: T) -> Result<(), Error>
+    where
+        T: Serialize + 'static,
+        S1: Into<Option<String>> + 'static,
+        S2: AsRef<str> + 'static,
+    {
+        self.execute_request(
+            reqwest::Method::PATCH,
+            limit_url,
+            url,
+            reqwest::Body::from(serde_json::to_string(&data)?),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn post_return_json<R, T, S1, S2>(
         &self,
         limit_url: S1,
@@ -485,5 +501,18 @@ impl Client {
             interaction_token = interaction.token,
         );
         self.post_json(None, url, response).await
+    }
+
+    pub async fn edit_original_interaction_response(
+        &self,
+        interaction: &Interaction,
+        response: InteractionApplicationCommandCallbackData,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "/webhooks/{application_id}/{interaction_token}/messages/@original",
+            application_id = (interaction.application_id.0).0,
+            interaction_token = interaction.token,
+        );
+        self.patch_json(None, url, response).await
     }
 }

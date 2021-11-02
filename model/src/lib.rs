@@ -1190,7 +1190,7 @@ pub struct NewApplicationCommand {
     pub default_permission: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ApplicationCommandOption {
     ///value of application command option type
     #[serde(rename = "type")]
@@ -1210,6 +1210,33 @@ pub struct ApplicationCommandOption {
     pub options: Option<Vec<ApplicationCommandOption>>,
 }
 
+impl ApplicationCommandOption {
+    pub fn string(name: impl Into<String>, description: impl Into<String>) -> Self {
+        ApplicationCommandOption {
+            typ: ApplicationCommandOptionType::String,
+            name: name.into(),
+            description: description.into(),
+            required: Some(true),
+            choices: None,
+            options: None,
+        }
+    }
+    pub fn sub_command(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        options: impl Into<Option<Vec<ApplicationCommandOption>>>,
+    ) -> Self {
+        ApplicationCommandOption {
+            typ: ApplicationCommandOptionType::SubCommand,
+            name: name.into(),
+            description: description.into(),
+            required: None,
+            choices: None,
+            options: options.into(),
+        }
+    }
+}
+
 enum_number!(ApplicationCommandOptionType{
     SubCommand = 1,
     SubCommandGroup = 2,
@@ -1222,14 +1249,14 @@ enum_number!(ApplicationCommandOptionType{
     Mentionable = 9,
 });
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum StringOrInt {
     String(String),
     Int(i64),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ApplicationCommandOptionChoice {
     ///1-100 character choice name
     pub name: String,
@@ -1270,6 +1297,15 @@ pub struct Interaction {
     pub message: Option<Message>,
 }
 
+impl Interaction {
+    pub fn get_user_id(&self) -> Option<&UserId> {
+        self.member
+            .as_ref()
+            .map(|member| &member.user.id)
+            .or_else(|| self.user.as_ref().map(|user| &user.id))
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct ApplicationCommandInteractionData {
     ///the ID of the invoked command
@@ -1280,8 +1316,8 @@ pub struct ApplicationCommandInteractionData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<ApplicationCommandInteractionDataResolved>,
     ///the params + values from the user
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub options: Option<Vec<ApplicationCommandInteractionDataOption>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ApplicationCommandInteractionDataOption>,
     ///for components, the custom_id of the component
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_id: Option<String>,
@@ -1315,7 +1351,8 @@ pub struct ApplicationCommandInteractionDataOption {
     ///the value of the pair
     pub value: Option<ApplicationCommandValue>,
     ///present if this option is a group or subcommand
-    pub options: Option<Vec<ApplicationCommandInteractionDataOption>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ApplicationCommandInteractionDataOption>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -1324,6 +1361,16 @@ pub enum ApplicationCommandValue {
     String(String),
     Integer(i64),
     Boolean(bool),
+}
+
+impl ToString for ApplicationCommandValue {
+    fn to_string(&self) -> String {
+        match self {
+            ApplicationCommandValue::String(s) => s.to_string(),
+            ApplicationCommandValue::Integer(i) => i.to_string(),
+            ApplicationCommandValue::Boolean(b) => b.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -1357,6 +1404,21 @@ pub struct InteractionResponse {
     pub data: Option<InteractionApplicationCommandCallbackData>,
 }
 
+impl InteractionResponse {
+    pub fn immediate(data: InteractionApplicationCommandCallbackData) -> Self {
+        Self {
+            typ: InteractionCallbackType::ChannelMessageWithSource,
+            data: Some(data),
+        }
+    }
+    pub fn deferred() -> Self {
+        Self {
+            typ: InteractionCallbackType::DeferredChannelMessageWithSource,
+            data: None,
+        }
+    }
+}
+
 enum_number!(InteractionCallbackType{
     Pong = 1,
     ChannelMessageWithSource = 4,
@@ -1385,6 +1447,28 @@ pub struct InteractionApplicationCommandCallbackData {
     ///message components
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub components: Option<Vec<MessageComponent>>,
+}
+
+impl InteractionApplicationCommandCallbackData {
+    pub fn text(text: impl Into<String>) -> Self {
+        Self {
+            tts: None,
+            content: Some(text.into()),
+            embeds: None,
+            allowed_mentions: None,
+            flags: None,
+            components: None,
+        }
+    }
+    pub fn build_new_embed<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(&mut Embed),
+    {
+        let mut embed = Default::default();
+        f(&mut embed);
+        self.embeds.get_or_insert_with(Vec::new).push(embed);
+        self
+    }
 }
 
 bitflags! {

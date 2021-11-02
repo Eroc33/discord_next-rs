@@ -84,7 +84,6 @@ async fn main() {
                                 let value = interaction_data
                                     .options
                                     .iter()
-                                    .flatten()
                                     .find(|opt| opt.name == "text")
                                     .and_then(|opt| opt.value.clone());
                                 let response = if let Some(ApplicationCommandValue::String(value)) =
